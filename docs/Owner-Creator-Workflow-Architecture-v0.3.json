@@ -1,0 +1,232 @@
+{
+  "meta": {
+    "eyebrow": "产品架构 · Product Architecture",
+    "title": "原点 · 老板创作流水线",
+    "highlight": "·",
+    "thesis": "版本化老板资料与授权素材把一次视频意图转成可追溯脚本和完整镜头清单，并以人工确认、预算闸门与冻结拼合约束事实、隐私和成本。",
+    "chips": ["资料驱动", "真实素材优先", "缺口批量生成", "确定性拼合"],
+    "architecture_tab": "产品架构"
+  },
+  "legend": [
+    {"kind": "reasoning", "label": "模型 / 推理"},
+    {"kind": "tool", "label": "工具 / 集成"},
+    {"kind": "orchestration", "label": "编排 / 决策"},
+    {"kind": "data", "label": "数据 / 事实"},
+    {"kind": "infrastructure", "label": "平台 / 基础设施"},
+    {"kind": "fallback", "label": "兜底 / 风险"},
+    {"kind": "outcome", "label": "用户结果"}
+  ],
+  "layers": [
+    {
+      "id": "l1",
+      "name": "体验层",
+      "description": "老板看到并完成的任务",
+      "columns": 4,
+      "nodes": [
+        {"id": "profile-onboarding", "title": "老板资料", "subtitle": "九问建档并上传实拍素材", "kind": "neutral", "badges": ["5 分钟目标", "渐进填写"], "detail": {"type": "体验层", "body": "先完成最小资料，再按所选模板动态补问；年龄仅收年龄段，素材逐条确认权属和用途。", "tags": ["proposal", "privacy"]}},
+        {"id": "script-variants", "title": "脚本换版", "subtitle": "选模板或描述意图，审阅多版本", "kind": "neutral", "badges": ["可编辑", "不覆盖"], "detail": {"type": "体验层", "body": "用户不用理解编导术语；每次换版创建并列版本，锁定段落和用户修改保持可恢复。", "tags": ["proposal"]}},
+        {"id": "shot-coverage", "title": "逐镜清单", "subtitle": "看实拍匹配、生成缺口和授权", "kind": "neutral", "badges": ["来源可见", "缺口可处理"], "detail": {"type": "体验层", "body": "每镜展示台词、目的、时长、选中素材、匹配理由和权属；缺失项可生成、补拍、图形替代或阻断。", "tags": ["proposal"]}},
+        {"id": "one-click-assembly", "title": "一键拼合", "subtitle": "冻结清单后创建可审阅成片提案", "kind": "outcome", "badges": ["确定性", "可重拼"], "detail": {"type": "体验层 · 结果", "body": "所有必需镜头就绪后才开放；拼合生成新版本，不自动发布，也不在渲染中重新选择素材。", "tags": ["proposal"]}}
+      ]
+    },
+    {
+      "id": "l2",
+      "name": "能力层",
+      "description": "支撑用户流程的产品能力",
+      "columns": 3,
+      "nodes": [
+        {"id": "profile-fact-management", "title": "资料事实管理", "subtitle": "区分确认事实、观察和推断", "kind": "orchestration", "badges": ["版本化", "可撤回"], "detail": {"type": "能力层", "body": "把人物、业务、客户、表达、边界和授权拆成带来源与用途的事实，资料变化使下游结果过期。", "tags": ["proposal"]}},
+        {"id": "template-routing", "title": "结构推荐", "subtitle": "把模板或自然语言映射为槽位", "kind": "reasoning", "badges": ["5 个 P0 模板"], "detail": {"type": "能力层", "body": "固定的是可校验结构而非固定文案；自定义意图也先推荐结构并等待用户确认。", "tags": ["proposal"]}},
+        {"id": "grounded-script-fill", "title": "有据填稿", "subtitle": "只用确认资料填充脚本结构", "kind": "reasoning", "badges": ["来源追溯", "待确认缺口"], "detail": {"type": "能力层", "body": "每个个性化槽位保存资料来源；缺少依据时保留待确认，不补造经历、资质、数据或客户效果。", "tags": ["proposal", "risk"]}},
+        {"id": "asset-segment-matching", "title": "素材匹配", "subtitle": "按授权、语义与镜头条件排序", "kind": "orchestration", "badges": ["真实素材优先"], "detail": {"type": "能力层", "body": "优先校验权属和授权，再结合人物、产品、动作、转写、OCR、画幅与时长给出候选及理由。", "tags": ["partial-confirmed", "proposal"]}},
+        {"id": "gap-resolution", "title": "缺口处理", "subtitle": "生成、补拍、图形替代或阻断", "kind": "orchestration", "badges": ["批量确认", "部分成功"], "detail": {"type": "能力层", "body": "批量生成仅处理允许生成的镜头；真实证据、未授权真人和高风险内容转为补拍或阻断。", "tags": ["proposal", "risk"]}},
+        {"id": "deterministic-assembly", "title": "确定性拼合", "subtitle": "冻结素材清单编译成成片版本", "kind": "orchestration", "badges": ["冻结 Manifest", "可恢复"], "detail": {"type": "能力层", "body": "拼合只接受冻结脚本、分镜和素材；现有项目已有 EditProposal、冻结规格和本地渲染底座。", "tags": ["partial-confirmed"]}}
+      ]
+    },
+    {
+      "id": "l3",
+      "name": "工作流与工具层",
+      "description": "执行路径、外部能力和失败兜底",
+      "sections": [
+        {
+          "title": "受控工作流",
+          "columns": 3,
+          "span": 2,
+          "nodes": [
+            {"id": "profile-intake-flow", "title": "建档流程", "subtitle": "最小资料、动态追问、用户确认", "kind": "orchestration", "detail": {"type": "工作流 · 建档", "body": "九问完成后生成资料摘要；不同模板只追问其必需字段。", "bullets": ["输入：自然语言与素材", "输出：确认资料版本"], "tags": ["proposal"]}},
+            {"id": "script-version-flow", "title": "脚本版本流", "subtitle": "生成、编辑、锁定、换版、确认", "kind": "orchestration", "detail": {"type": "工作流 · 脚本", "body": "同一基线下创建并列脚本版本，用户确认后才生成正式分镜。", "tags": ["proposal"]}},
+            {"id": "coverage-gate", "title": "覆盖闸门", "subtitle": "必需镜头就绪才允许拼合", "kind": "fallback", "detail": {"type": "工作流 · 质量闸门", "body": "阻断空镜头、未知权属和过期映射进入拼合；可选镜头必须由用户明确跳过。", "tags": ["proposal", "risk"]}},
+            {"id": "generation-batch-flow", "title": "生成批次", "subtitle": "报价后提交并支持单镜恢复", "kind": "orchestration", "detail": {"type": "工作流 · 生成", "body": "提交前确认范围、价格和授权；保存幂等键、单镜状态、产物和失败原因。", "tags": ["proposal"]}},
+            {"id": "assembly-flow", "title": "拼合流程", "subtitle": "冻结、渲染、预览、替换、重拼", "kind": "orchestration", "detail": {"type": "工作流 · 拼合", "body": "编译冻结输入，本地执行基础裁切、字幕和音量处理；失败从恢复点继续。", "tags": ["partial-confirmed"]}}
+          ]
+        },
+        {
+          "title": "工具与 Provider",
+          "columns": 1,
+          "span": 1,
+          "nodes": [
+            {"id": "local-media-analysis", "title": "本地素材分析", "subtitle": "转写、OCR、镜头和技术探针", "kind": "tool", "detail": {"type": "工具层", "body": "现有项目已有本地媒体导入和分析底座；分析结果仍需用户确认权属与关键内容。", "tags": ["confirmed"]}},
+            {"id": "generation-provider", "title": "生成 Provider", "subtitle": "提交、轮询、下载和校验", "kind": "tool", "detail": {"type": "工具层", "body": "图片/视频生成合同尚待实现；供应商字段不得进入公共 UI 和项目核心格式。", "tags": ["proposal", "risk"]}},
+            {"id": "local-renderer", "title": "本地渲染器", "subtitle": "按冻结规格输出视频和字幕", "kind": "tool", "detail": {"type": "工具层", "body": "现有项目已有 FFmpeg/RenderIR 相关底座；正式能力以专项测试覆盖为准。", "tags": ["partial-confirmed"]}}
+          ]
+        }
+      ],
+      "fallbacks": ["资料冲突→标记待确认，不继续填稿", "生成部分失败→保留成功结果并单镜重试", "权属未知→阻断拼合并提示补授权", "渲染失败→从冻结输入和恢复点重试"]
+    },
+    {
+      "id": "l4",
+      "name": "平台层",
+      "description": "版本、权限、成本和可靠性",
+      "columns": 4,
+      "nodes": [
+        {"id": "state-version-store", "title": "状态与版本", "subtitle": "资料到成片的版本和过期传播", "kind": "infrastructure", "detail": {"type": "平台层", "body": "保存 profile、brief、template、script、storyboard、assignment 和 assembly 的版本关系。", "tags": ["proposal"]}},
+        {"id": "rights-policy", "title": "授权策略", "subtitle": "素材、肖像、声音和用途检查", "kind": "fallback", "detail": {"type": "平台层 · 隐私", "body": "区分商用、平台、期限和衍生生成授权；敏感信息和形象/声音生成需要单独确认。", "tags": ["proposal", "privacy"]}},
+        {"id": "cost-approval", "title": "成本确认", "subtitle": "逐镜报价、预算和幂等防重", "kind": "orchestration", "detail": {"type": "平台层 · 成本", "body": "一键生成只能合并确认，不能绕过报价；支持预算上限和重复提交去重。", "tags": ["proposal"]}},
+        {"id": "observability-recovery", "title": "观测与恢复", "subtitle": "记录来源、状态、错误和恢复点", "kind": "infrastructure", "detail": {"type": "平台层", "body": "记录模型/Provider 决策、素材 hash、任务状态、错误和用户选择，支持问题定位。", "tags": ["partial-confirmed"]}}
+      ]
+    },
+    {
+      "id": "l5",
+      "name": "模型与决策层",
+      "description": "概率模型与确定性规则的分工",
+      "columns": 4,
+      "nodes": [
+        {"id": "language-reasoning", "title": "语言推理", "subtitle": "资料抽取、结构推荐和脚本填充", "kind": "reasoning", "detail": {"type": "决策层", "body": "模型负责语义理解和候选提案，不决定资料真假、素材权利或最终执行。", "tags": ["proposal"]}},
+        {"id": "asset-ranking-rules", "title": "素材排序", "subtitle": "硬性授权过滤后进行候选排名", "kind": "orchestration", "detail": {"type": "决策层", "body": "权属与授权是硬规则；语义、画幅、时长和历史反馈用于排序并解释理由。", "tags": ["partial-confirmed"]}},
+        {"id": "generation-policy", "title": "生成策略", "subtitle": "判断可生成、需补拍或应阻断", "kind": "fallback", "detail": {"type": "决策层", "body": "真实证据、未授权真人、高风险行业和误导性效果不交给生成模型自行决定。", "tags": ["proposal", "risk"]}},
+        {"id": "render-compiler", "title": "渲染编译", "subtitle": "冻结清单转为确定性执行规格", "kind": "orchestration", "detail": {"type": "决策层", "body": "只编译用户确认的镜头顺序、素材区间、字幕和基础效果，不在渲染时调用模型重选。", "tags": ["partial-confirmed"]}}
+      ]
+    },
+    {
+      "id": "l6",
+      "name": "数据层",
+      "description": "本地事实、素材和反馈闭环",
+      "columns": 3,
+      "nodes": [
+        {"id": "profile-facts", "title": "老板资料事实", "subtitle": "人物、业务、客户、表达和边界", "kind": "data", "detail": {"type": "数据层", "body": "每条事实保存来源、确认状态、敏感级别、允许用途和版本。", "tags": ["proposal", "privacy"]}},
+        {"id": "evidence-rights", "title": "证据与授权", "subtitle": "资质、案例、肖像、声音和商用范围", "kind": "data", "detail": {"type": "数据层", "body": "宣传主张和素材使用必须能回指证据与授权；过期或撤回会阻断下游。", "tags": ["proposal"]}},
+        {"id": "asset-segments", "title": "素材片段库", "subtitle": "原片、可用区间、分析事实和 hash", "kind": "data", "detail": {"type": "数据层", "body": "现有项目已有素材和分析事实底座；需要扩展为资料素材及逐条授权关系。", "tags": ["partial-confirmed"]}},
+        {"id": "creation-versions", "title": "创作版本", "subtitle": "意图、模板、脚本、分镜和映射", "kind": "data", "detail": {"type": "数据层", "body": "保存换版和过期关系，保证用户修改、素材选择和成片可比较、可恢复。", "tags": ["proposal"]}},
+        {"id": "generation-lineage", "title": "生成血缘", "subtitle": "Provider、参数、编号和 AI 标识", "kind": "data", "detail": {"type": "数据层", "body": "生成素材的来源和标识不能在导出链路丢失，具体供应商能力待合同实现。", "tags": ["proposal", "risk"]}},
+        {"id": "selection-feedback", "title": "选择反馈", "subtitle": "采用、拒绝、替换和失败原因", "kind": "data", "detail": {"type": "数据层", "body": "反馈用于评测资料问法、脚本版本和素材排序，不自动宣称形成数据壁垒。", "tags": ["proposal"]}}
+      ]
+    }
+  ],
+  "domain": {
+    "tab_label": "创作对象体系",
+    "intro": "对象和状态共同决定 AI 可以使用哪些事实、哪些素材能进入镜头，以及何时允许拼合。",
+    "stats": [
+      {"label": "P0 模板", "value": "5"},
+      {"label": "量化效果", "value": "待验证"}
+    ],
+    "groups": [
+      {"name": "资料与事实", "description": "定义这个人和这门生意", "kind": "data", "items": [{"label": "人物身份"}, {"label": "生意资料"}, {"label": "目标客户"}, {"label": "表达偏好"}, {"label": "内容边界"}]},
+      {"name": "模板与意图", "description": "把目标变成可填充结构", "kind": "reasoning", "items": [{"label": "固定模板"}, {"label": "自定义意图"}, {"label": "动态追问"}, {"label": "槽位来源策略"}]},
+      {"name": "脚本与分镜", "description": "管理版本和画面需求", "kind": "orchestration", "items": [{"label": "脚本版本组"}, {"label": "锁定段落"}, {"label": "分镜"}, {"label": "画面目的"}]},
+      {"name": "素材与授权", "description": "决定镜头能否使用", "kind": "fallback", "items": [{"label": "实拍片段"}, {"label": "候选匹配"}, {"label": "肖像/声音"}, {"label": "商用范围", "metric": "P0"}]},
+      {"name": "生成与拼合", "description": "补齐缺口并形成成片版本", "kind": "tool", "items": [{"label": "生成批次"}, {"label": "费用账本"}, {"label": "冻结清单"}, {"label": "成片版本"}]},
+      {"name": "治理与反馈", "description": "约束隐私、事实和恢复", "kind": "infrastructure", "items": [{"label": "来源追溯"}, {"label": "AI 标识"}, {"label": "过期传播"}, {"label": "采用/拒绝"}]}
+    ],
+    "source_note": "对象和状态来自 PRD v0.3 的提案；现有实现仅部分覆盖素材分析、脚本/分镜与冻结渲染，效果指标待真实老板任务验证。"
+  },
+  "scenarios": {
+    "tab_label": "关键场景",
+    "intro": "用四类高差异场景检验资料、事实、授权、生成和恢复边界是否真正贯通。",
+    "items": [
+      {
+        "id": "minimal-profile-first-value",
+        "number": "01",
+        "title": "不懂编导的老板首次建档",
+        "subtitle": "九个问题后直接看到一份基于本人资料的脚本",
+        "user_input_label": "老板说",
+        "user_input": "大家叫我王姐，我开社区早餐店，最想让附近上班族知道我们每天现做。",
+        "baseline_label": "现有方案卡在哪",
+        "baseline_gap": "从空白选题或自由文本开始，用户不知道该提供哪些事实，也看不出脚本是否真的属于自己。",
+        "node_ids": ["profile-onboarding", "profile-intake-flow", "profile-fact-management", "profile-facts", "template-routing", "grounded-script-fill", "script-variants"],
+        "steps": [
+          {"title": "九问建档", "description": "收集最小人物、业务、客户和边界", "kind": "orchestration"},
+          {"title": "资料摘要", "description": "区分事实、观察和缺口并让用户确认", "kind": "reasoning"},
+          {"title": "结构推荐", "description": "推荐幕后过程模板并只追问必要信息", "kind": "reasoning"},
+          {"title": "有据填稿", "description": "用确认资料填充脚本槽位", "kind": "reasoning"},
+          {"title": "得到第一版", "description": "用户可改写或换一版", "kind": "outcome"}
+        ],
+        "tags": [{"label": "渐进建档", "kind": "orchestration"}, {"label": "资料事实", "kind": "data"}, {"label": "结构推荐", "kind": "reasoning"}],
+        "values": [{"actor": "老板", "text": "不用学习脚本术语就能看到第一份像自己的内容。"}, {"actor": "平台", "text": "以最短资料路径建立可复用的创作事实。"}],
+        "fallback": "最小资料仍有冲突时，不宣称个性化，显示需要老板确认的具体问题。"
+      },
+      {
+        "id": "custom-intent-to-template",
+        "number": "02",
+        "title": "一句话意图需要结构判断",
+        "subtitle": "自定义视频也先确认模板和事实来源",
+        "user_input_label": "老板说",
+        "user_input": "我想拍一条为什么我们不卖隔夜包子的内容，但别说同行坏话。",
+        "baseline_label": "现有方案卡在哪",
+        "baseline_gap": "自由生成容易堆砌文案、攻击竞品或编造制作细节，且换一版会覆盖用户已经满意的段落。",
+        "node_ids": ["template-routing", "grounded-script-fill", "rights-policy", "script-version-flow", "script-variants", "creation-versions"],
+        "steps": [
+          {"title": "意图抽取", "description": "识别知识避坑目标和禁说边界", "kind": "reasoning"},
+          {"title": "结构确认", "description": "推荐知识模板并展示槽位", "kind": "orchestration"},
+          {"title": "事实填充", "description": "只引用已确认制作流程", "kind": "reasoning"},
+          {"title": "换一版", "description": "锁定满意段落并创建并列版本", "kind": "orchestration"},
+          {"title": "确认脚本", "description": "冻结选中版本进入分镜", "kind": "outcome"}
+        ],
+        "tags": [{"label": "自定义意图", "kind": "reasoning"}, {"label": "内容边界", "kind": "fallback"}, {"label": "版本化", "kind": "infrastructure"}],
+        "values": [{"actor": "老板", "text": "能表达观点，同时保留自己的事实和边界。"}, {"actor": "平台", "text": "减少无依据事实与覆盖式重生成。"}]
+      },
+      {
+        "id": "mixed-material-coverage",
+        "number": "03",
+        "title": "实拍只能覆盖部分分镜",
+        "subtitle": "匹配、生成、补拍与图形替代并存",
+        "user_input_label": "系统状态",
+        "user_input": "六个镜头中三个有实拍，一个可用产品图生成，一个必须补拍，一个生成失败。",
+        "baseline_label": "现有方案卡在哪",
+        "baseline_gap": "只做素材搜索不能闭环，只做黑盒生成又会忽略真实素材、事实证据、费用和部分失败。",
+        "node_ids": ["asset-segment-matching", "asset-ranking-rules", "asset-segments", "gap-resolution", "generation-policy", "generation-batch-flow", "cost-approval", "generation-provider", "shot-coverage"],
+        "steps": [
+          {"title": "授权过滤", "description": "先排除不可用实拍片段", "kind": "fallback"},
+          {"title": "候选匹配", "description": "给出可用区间和匹配理由", "kind": "orchestration"},
+          {"title": "缺口分类", "description": "区分可生成、补拍、图形和阻断", "kind": "orchestration"},
+          {"title": "批量确认", "description": "展示逐镜报价并一次提交允许项", "kind": "tool"},
+          {"title": "部分恢复", "description": "保留成功镜头，失败项单镜重试", "kind": "fallback"},
+          {"title": "覆盖可见", "description": "逐镜清单显示真实状态和下一步", "kind": "outcome"}
+        ],
+        "tags": [{"label": "真实素材优先", "kind": "data"}, {"label": "生成批次", "kind": "tool"}, {"label": "成本确认", "kind": "orchestration"}],
+        "values": [{"actor": "老板", "text": "不用逐镜猜处理方式，也不会因一个失败重做整批。"}, {"actor": "平台", "text": "把生成成本和失败范围限制在真正缺失的镜头。"}],
+        "fallback": "Provider 失败时不丢失已选实拍和已生成素材，可改为补拍或图形替代。"
+      },
+      {
+        "id": "rights-revoked-before-assembly",
+        "number": "04",
+        "title": "拼合前授权被撤回",
+        "subtitle": "隐私和权属变化需要向下游传播",
+        "user_input_label": "系统状态",
+        "user_input": "一段客户出镜素材已被选中，但客户随后撤回了商用授权。",
+        "baseline_label": "现有方案卡在哪",
+        "baseline_gap": "若授权只是上传时的一次勾选，旧素材仍可能留在分镜和冻结成片输入中，造成真实外部风险。",
+        "node_ids": ["evidence-rights", "rights-policy", "state-version-store", "coverage-gate", "shot-coverage", "deterministic-assembly", "one-click-assembly"],
+        "steps": [
+          {"title": "撤回授权", "description": "更新权利对象并记录时间", "kind": "data"},
+          {"title": "传播过期", "description": "标记关联素材映射和拼合清单失效", "kind": "infrastructure"},
+          {"title": "阻断拼合", "description": "覆盖闸门指出具体不可用镜头", "kind": "fallback"},
+          {"title": "替换素材", "description": "选择其他实拍、补拍或合规生成", "kind": "orchestration"},
+          {"title": "重新冻结", "description": "确认完整清单后恢复拼合", "kind": "outcome"}
+        ],
+        "tags": [{"label": "授权策略", "kind": "fallback"}, {"label": "版本传播", "kind": "infrastructure"}, {"label": "覆盖闸门", "kind": "orchestration"}],
+        "values": [{"actor": "老板", "text": "清楚知道哪一镜不能再用，以及如何替换。"}, {"actor": "平台", "text": "避免已撤回素材继续进入成片和导出。"}],
+        "fallback": "没有替代素材时保持阻断，不用生成内容伪造真实客户见证。"
+      }
+    ],
+    "summary": {
+      "title": "四个场景的共同本质",
+      "items": [
+        {"number": "01", "label": "事实先行", "description": "个性化必须来自确认资料"},
+        {"number": "02", "label": "版本保护", "description": "生成和换版不覆盖用户决定"},
+        {"number": "03", "label": "缺口受控", "description": "真实素材、生成、补拍各有边界"},
+        {"number": "04", "label": "授权传播", "description": "权利变化必须阻断下游执行"}
+      ],
+      "conclusion": "这条流水线的价值不是让模型替老板做更多决定，而是让老板资料、真实素材和每次人工选择形成一个可追溯、可补齐、可恢复的成片合同。"
+    }
+  }
+}

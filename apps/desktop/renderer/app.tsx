@@ -15,6 +15,7 @@ import {
   Sparkles,
   Target,
   Upload,
+  Workflow,
 } from "lucide-react";
 import { demoWorkspace } from "./lib/demo-workspace";
 import type { ViewId } from "./types";
@@ -25,8 +26,10 @@ import { AccountRadarWorkbench } from "./components/account-radar-workbench";
 import { ReviewWorkbench } from "./components/review-workbench";
 import { TopicRadarWorkbench } from "./components/topic-radar-workbench";
 import { SettingsWorkbench } from "./components/settings-workbench";
+import { OwnerCreatorWorkbench } from "./components/owner-creator-workbench";
 
 const navItems: Array<{ id: ViewId; label: string; icon: typeof LayoutDashboard }> = [
+  { id: "studio", label: "创作流水线", icon: Workflow },
   { id: "today", label: "今天", icon: LayoutDashboard },
   { id: "radar", label: "账号雷达", icon: Target },
   { id: "ideas", label: "选题库", icon: Lightbulb },
@@ -49,7 +52,7 @@ function stageLabel(stage: string) {
 }
 
 export function App() {
-  const [activeView, setActiveView] = useState<ViewId>("today");
+  const [activeView, setActiveView] = useState<ViewId>("studio");
   const [query, setQuery] = useState("");
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [mediaImport, setMediaImport] = useState<ImportMediaResult | null>(null);
@@ -146,11 +149,13 @@ export function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb"><span>工作台</span><b>/</b><strong>{navItems.find((item) => item.id === activeView)?.label ?? "设置"}</strong></div>
-          <div className="topbar-actions"><div className="search-box"><Search size={16} /><input aria-label="搜索项目、选题或素材" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目、选题或素材" /></div><button className="icon-button" aria-label="打开快捷操作" title="快捷操作"><Sparkles size={17} /></button><button className="avatar top-avatar" aria-label="打开创作者资料">创</button></div>
+          <div className="topbar-actions"><div className="search-box"><Search size={16} /><input aria-label="搜索项目、选题或素材" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索项目、选题或素材" /></div><button className="icon-button" aria-label="打开快捷操作" title="快捷操作"><Sparkles size={17} /></button><button className="avatar top-avatar" aria-label="打开老板资料" onClick={() => setActiveView("studio")}>创</button></div>
         </header>
 
         <div className="page-content">
-          {activeView === "today" ? (
+          {activeView === "studio" ? (
+            <OwnerCreatorWorkbench openLegacyProjects={() => setActiveView("projects")} openEdit={() => setActiveView("edit")} />
+          ) : activeView === "today" ? (
             <>
               <section className="hero-row"><div><div className="eyebrow">THURSDAY · AUG 14</div><h1>今天，先把一个观点讲清楚。</h1><p className="hero-copy">从研究、脚本到分镜和素材，原点把下一步放在你面前。</p></div><div className="hero-actions"><button className="secondary-button" onClick={importMedia} disabled={mediaImporting}><Upload size={16} /> {mediaImporting ? "处理中…" : "导入素材"}</button><button className="primary-button"><Plus size={17} /> 新建创作项目</button></div></section>
               {mediaImport && <section className={`media-feedback ${mediaImport.ok ? "success" : "error"}`}><div className="media-feedback-icon"><Upload size={16} /></div><div className="media-feedback-copy"><strong>{mediaImport.ok ? `已导入 ${mediaImport.sourceName}` : mediaImport.message}</strong>{mediaImport.ok ? <p>{formatDuration(mediaImport.durationMs)} · {mediaImport.artifacts?.length ?? 0} 个本地产物已生成，可进入素材库继续整理。</p> : <p>请检查工作区和视频文件后重试。</p>}</div>{mediaImport.ok && <span className="media-feedback-status">本地完成</span>}</section>}

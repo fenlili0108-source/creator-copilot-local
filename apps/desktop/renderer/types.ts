@@ -1,4 +1,5 @@
 export type ViewId =
+  | "studio"
   | "today"
   | "radar"
   | "ideas"

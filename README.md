@@ -1,8 +1,8 @@
 # Creator Copilot Local
 
-本地优先的内容创作助手，首个工作流聚焦抖音真人深度口播：研究、选题、脚本、分镜、拍摄包、素材库、AI 粗剪、导出和复盘。
+本地优先的内容创作助手，首个工作流聚焦老板、个体户和小微门店的真人短视频：先建立老板资料与实拍素材库，再由资料驱动脚本、分镜匹配、素材补全和成片拼合。
 
-当前仓库处于 V0–V8 逐步施工中：已提供 React UI、Electron main/preload 安全边界、SQLite catalog、本地媒体管线、AI 粗剪、TikHub 研究、交换格式、发布包和复盘页面。仍未完成的能力以实施计划和施工记录为准，不把开发壳 smoke 当成跨平台发布完成。
+当前仓库处于 V0–V8 逐步施工中：已提供 React UI、Electron main/preload 安全边界、SQLite catalog、本地媒体管线、AI 粗剪、TikHub 研究、交换格式、发布包和复盘页面。新版“创作流水线”已实现可点击的本地交互原型；付费生成 Provider、持久化和最终 MP4 拼合仍以实施计划为准，不把交互 smoke 当成生产能力或跨平台发布完成。
 
 ## 本地运行
 
@@ -28,7 +28,12 @@ npm run dev:desktop
 
 ## 文档入口
 
-- [PRD](docs/PRD-v0.2-Workflow-and-Scope.md)
+- [产品边界与持久约束](PRODUCT.md)
+- [视觉设计系统](DESIGN.md)
+- [老板资料驱动创作流水线 PRD v0.3](docs/PRD-v0.2-Workflow-and-Scope.md)
+- [产品架构交互蓝图](docs/Owner-Creator-Workflow-Architecture-v0.3.html)
+- [产品架构源数据](docs/Owner-Creator-Workflow-Architecture-v0.3.json)
+- [本轮实施计划](docs/plan/2026-08-19-owner-creator-workflow-v0.3.md)
 - [技术实施计划](docs/Implementation-Plan-v0.2.md)
 - [用户旅途坏路径测试](docs/User-Journey-Failure-Test-Cases-v0.1.md)
 - [Agent 技术栈 CTO 评审](docs/Agent-Stack-CTO-Review-v0.1.md)

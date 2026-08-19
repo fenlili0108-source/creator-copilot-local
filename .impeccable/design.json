@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-19T16:35:21+08:00",
+  "title": "Design System: 原点 Creator Copilot",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "账本绿",
+        "canonical": "#2f3b2c",
+        "tonalRamp": ["#151b14", "#20291e", "#2f3b2c", "#42533e", "#60725b", "#879783", "#b8c5b5", "#eef3ec"]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "账本绿悬停",
+        "canonical": "#42533e",
+        "tonalRamp": ["#182016", "#293326", "#42533e", "#586b53", "#74856f", "#9aa794", "#c5cec1", "#f0f4ee"]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "安全浅绿",
+        "canonical": "#e3eadf",
+        "tonalRamp": ["#1b2419", "#33412f", "#53644e", "#768573", "#9caa98", "#c0ccbc", "#e3eadf", "#f5f8f3"]
+      },
+      "generation-accent": {
+        "role": "secondary",
+        "displayName": "生成紫灰",
+        "canonical": "#5a4b68",
+        "tonalRamp": ["#201a25", "#352d3d", "#5a4b68", "#71627f", "#8d7d9b", "#ad9fba", "#d0c7d7", "#f4f1f6"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "暖纸",
+        "canonical": "#f4f0e8",
+        "tonalRamp": ["#27241f", "#49443b", "#6e675c", "#948c7f", "#b9b1a5", "#d8d1c7", "#f4f0e8", "#fcfaf7"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "奶白表面",
+        "canonical": "#fbf9f4",
+        "tonalRamp": ["#282620", "#4b473f", "#716b60", "#999185", "#c0b9ae", "#dfd9d0", "#fbf9f4", "#fffefd"]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "抬升奶白",
+        "canonical": "#fffdf8",
+        "tonalRamp": ["#292720", "#4d493f", "#746d61", "#9c9486", "#c4bcb0", "#e2dcd2", "#fffdf8", "#ffffff"]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "暖灰面",
+        "canonical": "#ece7dc",
+        "tonalRamp": ["#26231e", "#45413a", "#686158", "#8a8277", "#aea69a", "#d0c9bf", "#ece7dc", "#faf8f4"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "柔和边线",
+        "canonical": "#ddd5c9",
+        "tonalRamp": ["#25221e", "#433e38", "#625c53", "#827a70", "#a29a8f", "#beb6ab", "#ddd5c9", "#f5f2ed"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "墨色",
+        "canonical": "#312d27",
+        "tonalRamp": ["#171411", "#25211d", "#312d27", "#514c44", "#746e64", "#9c968d", "#cbc6be", "#f2efeb"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "暖灰正文",
+        "canonical": "#655e55",
+        "tonalRamp": ["#211e1a", "#3b3630", "#655e55", "#7e766c", "#9b948b", "#bcb5ac", "#ded9d2", "#f7f4f0"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "克制砖红",
+        "canonical": "#8c5146",
+        "tonalRamp": ["#2a1714", "#4a2a25", "#6b3d35", "#8c5146", "#aa7066", "#c9958c", "#e3c1bb", "#f8eeeb"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "经营手记标题", "purpose": "页面主命题和关键阶段标题。" },
+      "headline": { "displayName": "阶段标题", "purpose": "流程阶段与关键结果。" },
+      "body": { "displayName": "工作说明正文", "purpose": "资料说明、脚本和匹配理由。" },
+      "label": { "displayName": "可读标签", "purpose": "字段、状态、来源和授权说明。" }
+    },
+    "shadows": [
+      { "name": "panel-ambient", "value": "0 12px 30px rgba(71,61,47,.055)", "purpose": "只分离主阶段面板，不制造悬浮感。" },
+      { "name": "primary-action", "value": "0 6px 16px rgba(47,59,44,.18)", "purpose": "提示当前唯一主操作。" }
+    ],
+    "motion": [
+      { "name": "state-quick", "value": "160ms ease", "purpose": "按钮、边框和状态切换。" },
+      { "name": "hover-lift", "value": "translateY(-1px)", "purpose": "仅用于可点击主次按钮的悬停反馈。" }
+    ],
+    "breakpoints": [
+      { "name": "stack-complex", "value": "1000px" },
+      { "name": "compact-shell", "value": "900px" },
+      { "name": "single-column", "value": "700px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "每个操作区唯一的下一步主操作。",
+      "html": "<button type=\"button\" class=\"ds-btn-primary\">保存资料，决定这条视频 →</button>",
+      "css": ".ds-btn-primary { min-height: 42px; padding: 10px 15px; border: 0; border-radius: 10px; background: #2f3b2c; color: #fbf9f4; font: 700 12px/1.4 ui-sans-serif, system-ui, sans-serif; box-shadow: 0 6px 16px rgba(47,59,44,.18); cursor: pointer; transition: transform .16s ease, background .16s ease, box-shadow .16s ease; } .ds-btn-primary:hover { transform: translateY(-1px); background: #42533e; box-shadow: 0 9px 20px rgba(47,59,44,.2); } .ds-btn-primary:focus-visible { outline: 2px solid #567650; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "返回、改方向和非破坏性次级入口。",
+      "html": "<button type=\"button\" class=\"ds-btn-secondary\">← 返回资料</button>",
+      "css": ".ds-btn-secondary { min-height: 38px; padding: 9px 11px; border: 1px solid #d7cdbf; border-radius: 8px; background: #fbf9f4; color: #655e55; font: 600 12px/1.4 ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: transform .15s ease, border-color .15s ease; } .ds-btn-secondary:hover { transform: translateY(-1px); border-color: #9faa99; color: #4b6547; } .ds-btn-secondary:focus-visible { outline: 2px solid #567650; outline-offset: 2px; }"
+    },
+    {
+      "name": "Profile Field",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "带用途说明的老板资料字段。",
+      "html": "<label class=\"ds-field\"><span>大家怎么称呼你？</span><input value=\"王姐\" aria-describedby=\"ds-field-help\"><small id=\"ds-field-help\">用于开场称呼，不要求填写实名。</small></label>",
+      "css": ".ds-field { display: grid; gap: 7px; color: #554f46; font: 650 11px/1.5 ui-sans-serif, system-ui, sans-serif; } .ds-field input { min-height: 42px; padding: 0 11px; border: 1px solid #d9d0c4; border-radius: 10px; outline: 0; background: #fffdf8; color: #312d27; font: 400 12px/1.55 ui-sans-serif, system-ui, sans-serif; } .ds-field input:focus { border-color: #748c6e; box-shadow: 0 0 0 3px rgba(116,140,110,.13); } .ds-field small { color: #655e55; font-size: 11px; font-weight: 400; }"
+    },
+    {
+      "name": "Stage Navigation",
+      "kind": "nav",
+      "refersTo": "panel",
+      "description": "显示当前、完成与后续阶段的分段账本条。",
+      "html": "<nav class=\"ds-stages\" aria-label=\"创作步骤\"><button class=\"ds-stage is-done\"><b>✓</b><span>老板资料</span></button><button class=\"ds-stage is-active\"><b>2</b><span>视频方向</span></button><button class=\"ds-stage\"><b>3</b><span>脚本版本</span></button></nav>",
+      "css": ".ds-stages { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); overflow: hidden; border: 1px solid #d8d0c4; border-radius: 13px; background: #ece7dc; } .ds-stage { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 10px 12px; border: 0; border-right: 1px solid #d8d0c4; background: transparent; color: #655e55; font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-stage:last-child { border-right: 0; } .ds-stage b { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid #c8c0b4; border-radius: 50%; } .ds-stage.is-active { background: #fbf9f4; color: #334330; } .ds-stage.is-active b, .ds-stage.is-done b { border-color: #667f60; background: #667f60; color: white; } .ds-stage:focus-visible { outline: 2px solid #567650; outline-offset: -3px; }"
+    },
+    {
+      "name": "Material Status Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "同时说明镜头状态、素材来源、理由和真实下一步。",
+      "html": "<article class=\"ds-material\"><div class=\"ds-material-copy\"><strong>关键过程</strong><p>展示最能证明差异的真实动作。</p><small>已匹配有授权的工作过程素材。</small></div><div class=\"ds-material-state\"><span>已用实拍</span><b>凌晨备料与现包过程.mp4</b><button type=\"button\">回资料页更换</button></div></article>",
+      "css": ".ds-material { display: grid; grid-template-columns: minmax(0,1fr) 170px; gap: 16px; padding: 16px; border: 1px solid #ddd5c9; border-radius: 13px; background: #fbf9f4; color: #312d27; font-family: ui-sans-serif, system-ui, sans-serif; } .ds-material-copy strong { font-size: 12px; } .ds-material-copy p { margin: 7px 0 0; color: #625b52; font-size: 12px; line-height: 1.55; } .ds-material-copy small { display: block; margin-top: 6px; color: #655e55; font-size: 11px; line-height: 1.5; } .ds-material-state { text-align: right; } .ds-material-state span { display: inline-block; padding: 4px 7px; border-radius: 999px; background: #e3eadf; color: #4f6a4b; font-size: 11px; } .ds-material-state b { display: block; margin-top: 7px; overflow: hidden; color: #5c554c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; } .ds-material-state button { min-height: 32px; padding: 3px 0; border: 0; background: transparent; color: #4f694a; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; } .ds-material-state button:focus-visible { outline: 2px solid #567650; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "老板的本地创作台账",
+    "overview": "原点像一本放在柜台手边的创作台账：务实、有温度，每条资料、每个素材状态和每次生成都有清楚出处。界面不追求炫技，而是让不熟悉编导和剪辑术语的老板能快速判断“现在到哪一步、下一步做什么、哪些内容是真的”。\n\n视觉保持暖中性、克制、可信和可操作。绿色承担主操作、安全与就绪状态；少量紫灰只标记生成类动作。大标题提供人情味，正文保持高可读密度，原型能力必须以视觉和文案明确区别于已经上线的生产能力。",
+    "keyCharacteristics": [
+      "暖纸张底色与低饱和状态色",
+      "标题有温度，正文清楚直接",
+      "边框和轻环境阴影建立层级",
+      "操作名称与真实行为一致",
+      "桌面高效、窄屏仍可完整操作"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "每个操作区只允许一个主绿色动作；紫灰只属于生成语义，不能成为第二个通用主色。", "section": "colors" },
+      { "name": "The Readable Ledger Rule", "body": "不用 8–10px 低对比文字塞信息；辅助内容至少采用已定义的标签字号，并以足够深的暖灰呈现。", "section": "typography" },
+      { "name": "The Flat-by-Default Rule", "body": "层级首先来自底色和边线；阴影只用于主面板、主操作和暂时浮起的交互状态。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 让每个阶段只有一个最明确的主操作。",
+      "Do 用资料来源、授权状态和匹配理由建立信任。",
+      "Do 在桌面与 390px 窄屏同时检查文字对比、换行和横向溢出。",
+      "Do 用“本地交互原型”“不会输出 MP4”等直接文案标清能力边界。"
+    ],
+    "donts": [
+      "Don't 使用高饱和渐变、霓虹色或纯装饰性大色块。",
+      "Don't 用 8–10px、低对比文字隐藏重要说明和免责声明。",
+      "Don't 创建名称与真实行为不一致的按钮或无响应控件。",
+      "Don't 把演示资料、模拟授权或生成提案描述成真实生产结果。",
+      "Don't 用粗侧边框、过度阴影或持续动画制造层级。"
+    ]
+  }
+}
