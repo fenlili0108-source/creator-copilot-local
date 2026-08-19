@@ -83,6 +83,28 @@ describe("SqliteCatalog", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("persists provider submission checkpoints and never auto-requeues an ambiguous billed submit", () => {
+    const root = mkdtempSync(join(tmpdir(), "creator-copilot-provider-submit-"));
+    const catalog = new SqliteCatalog(join(root, "catalog.sqlite"));
+    const startedAt = new Date("2026-08-19T00:00:00.000Z");
+    catalog.insertJob(fixtureJob({ id: "submitting-job", kind: "provider.video.generate", idempotencyKey: "submitting-key" }));
+    const submittingLease = catalog.claimJob("submitting-job", "media-worker", startedAt, 1_000)!;
+    expect(catalog.heartbeatJob("submitting-job", "media-worker", submittingLease, startedAt, 1_000)).toBe(true);
+    expect(catalog.checkpointActiveJob("submitting-job", "media-worker", submittingLease, { checkpoint: { stage: "submitting", shotId: "shot-1" } }, new Date("2026-08-19T00:00:00.100Z"))).toBe(true);
+    expect(catalog.checkpointActiveJob("submitting-job", "stale-worker", submittingLease, { checkpoint: { stage: "unsafe" } }, new Date("2026-08-19T00:00:00.200Z"))).toBe(false);
+
+    catalog.insertJob(fixtureJob({ id: "submitted-job", kind: "provider.video.generate", idempotencyKey: "submitted-key" }));
+    const submittedLease = catalog.claimJob("submitted-job", "media-worker", startedAt, 1_000)!;
+    expect(catalog.heartbeatJob("submitted-job", "media-worker", submittedLease, startedAt, 1_000)).toBe(true);
+    expect(catalog.checkpointActiveJob("submitted-job", "media-worker", submittedLease, { externalJobId: "task-video-1", checkpoint: { stage: "submitted", shotId: "shot-2" } }, new Date("2026-08-19T00:00:00.100Z"))).toBe(true);
+
+    expect(catalog.recoverExpiredLeases(new Date("2026-08-19T00:00:02.000Z"))).toBe(2);
+    expect(catalog.getJob("submitting-job")?.state).toBe("submission_unknown");
+    expect(catalog.getJob("submitted-job")).toMatchObject({ state: "needs_attention", externalJobId: "task-video-1" });
+    catalog.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
   it("lists workspace jobs for a restartable media status view", () => {
     const root = mkdtempSync(join(tmpdir(), "creator-copilot-job-list-"));
     const catalog = new SqliteCatalog(join(root, "catalog.sqlite"));

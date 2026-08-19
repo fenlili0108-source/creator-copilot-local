@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  adoptGeneratedShot,
+  applyGeneratedShotResults,
   buildStoryboard,
   demoOwnerAssets,
   demoOwnerProfile,
   emptyOwnerProfile,
   generateMissingShots,
+  generationPromptForShot,
   generateScriptVariant,
   getProfileCompletion,
   getStoryboardCoverage,
   inferAssetKind,
   isAssemblyReady,
+  markShotsGenerating,
   recommendTemplate,
 } from "./owner-creator-workflow";
 
@@ -44,6 +48,22 @@ describe("owner creator workflow", () => {
     const generated = generateMissingShots(buildStoryboard(variant, demoOwnerAssets));
     expect(getStoryboardCoverage(generated)).toMatchObject({ ready: 5, missing: 0, blocked: 0, complete: true });
     expect(isAssemblyReady(generated)).toBe(true);
+  });
+
+  it("keeps real provider outputs behind a local preview-and-adopt gate", () => {
+    const variant = generateScriptVariant({ profile: demoOwnerProfile, templateId: "behind-scenes", brief: "拍一条早餐店幕后", version: 1 });
+    const initial = buildStoryboard(variant, demoOwnerAssets);
+    const missing = initial.find((shot) => shot.status === "missing")!;
+    expect(generationPromptForShot(missing)).toContain("不要出现可识别人物正脸");
+    const generating = markShotsGenerating(initial);
+    expect(generating.find((shot) => shot.id === missing.id)?.status).toBe("generating");
+    const reviewed = applyGeneratedShotResults(generating, [{ shotId: missing.id, ok: true, status: "succeeded", providerTaskId: "task-1", artifactId: "artifact-1", relativePath: "generated/shot.mp4", durationMs: 5_000 }]);
+    expect(reviewed.find((shot) => shot.id === missing.id)).toMatchObject({ status: "generated_review", artifactId: "artifact-1", targetSeconds: 5 });
+    expect(getStoryboardCoverage(reviewed)).toMatchObject({ ready: 4, review: 1, complete: false });
+    expect(isAssemblyReady(reviewed)).toBe(false);
+    const adopted = adoptGeneratedShot(reviewed, missing.id);
+    expect(adopted.find((shot) => shot.id === missing.id)?.status).toBe("generated");
+    expect(isAssemblyReady(adopted)).toBe(true);
   });
 
   it("keeps real-customer evidence blocked when no authorized material exists", () => {

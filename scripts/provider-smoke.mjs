@@ -113,8 +113,10 @@ async function testApiMart() {
 }
 
 try {
-  await testTikHub();
-  await testApiMart();
+  if (process.env.TIKHUB_API_KEY) await testTikHub();
+  else console.log(JSON.stringify({ provider: "tikhub", check: "configuration", skipped: true, reason: "TIKHUB_API_KEY 未配置" }));
+  if (process.env.APIMART_API_KEY) await testApiMart();
+  else console.log(JSON.stringify({ provider: "apimart", check: "configuration", skipped: true, reason: "APIMART_API_KEY 未配置" }));
 } catch (error) {
   console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.name : "UnknownError", message: error instanceof Error ? error.message : "Provider smoke failed" }));
   process.exitCode = 1;

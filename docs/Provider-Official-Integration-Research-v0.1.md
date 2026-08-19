@@ -1,7 +1,7 @@
 # Provider 官方接入调研与小额联调记录 v0.1
 
-日期：2026-08-14
-状态：已完成官方文档核对；已完成无生成任务的真实 smoke；账号研究、AI 粗剪和脚本提案均通过显式 main-process IPC 接入；正式的通用 Provider Job 调度仍后置。
+日期：2026-08-14；APIMart 视频接口补充核对：2026-08-19
+状态：已完成官方文档核对；已完成无生成任务的真实 smoke；账号研究、AI 粗剪和脚本提案均通过显式 main-process IPC 接入；APIMart 缺失分镜生成已进入“估算确认 + 异步任务 + 本地化”的受控实现，自动化测试仍不发起真实计费生成。
 范围：TikHub（抖音研究）与 APIMart（文本/视觉/音频/视频模型网关）。
 
 ## 1. 结论先行
@@ -129,7 +129,8 @@ TikHub 的 Search API、批量高清下载、星图画像和视频生成都不�
 - [Whisper-1 转写](https://docs.apimart.ai/en/api-reference/audios/whisper-1)
 - [TTS](https://docs.apimart.ai/en/api-reference/audios/tts)
 - [图片上传](https://docs.apimart.ai/en/api-reference/uploads/images)
-- [视频生成示例](https://docs.apimart.ai/en/api-reference/videos/wan2.6/generation)
+- [Kling V3 视频生成](https://docs.apimart.ai/en/api-reference/videos/kling-v3/generation)
+- [2026 视频模型价格对比](https://apimart.ai/blog/top-ai-video-models-2026-pricing-api-comparison)
 - [Token 余额](https://docs.apimart.ai/en/api-reference/account/token-balance)
 
 事实：
@@ -141,7 +142,7 @@ TikHub 的 Search API、批量高清下载、星图画像和视频生成都不�
 | 模型目录 | `GET /v1/models`；文档声明可用 `expand` 获取类别、能力标签和参数 schema；真实 smoke 返回 285 条且当前响应字段主要是 `supported_endpoint_types`，因此不能假设扩展字段一定存在 | 动态模型选择；表单必须从 capability 缺失安全降级 |
 | 异步任务 | 图片/视频提交返回 `task_id`，`GET /v1/tasks/{task_id}` 查状态、进度和临时结果 URL | 统一映射 `submitted/polling/completed/failed` 到 Job |
 | 图片上传 | `POST /v1/uploads/images`；不再建议把 base64 直接塞进生成接口；URL 有效期文档标为 72 小时 | 生成示意图前先上传；完成后立即本地化 |
-| 视频 | 多模型统一 `POST /v1/videos/generations`；不同模型在时长、画幅、清晰度和参考素材上不同；多数异步 | 只作为 AI 剪辑提案中的缺口补画面，不替代真人素材 |
+| 视频 | 多模型统一 `POST /v1/videos/generations`；当前缺失分镜固定用 `kling-v3` 标准模式、5 秒、9:16；返回异步 `task_id` | 只作为 AI 剪辑提案中的缺口补画面，不替代本人、客户或真实经营过程素材 |
 | ASR | Whisper-1 `POST /v1/audio/transcriptions`；99 语言、mp3/mp4/m4a/wav/webm、最大 25MB；支持 json/text/srt/vtt/verbose_json | 云端 fallback；首个本地基线仍优先 whisper.cpp |
 | TTS | `POST /v1/audio/speech`；输入最多 4096 字符；输出 wav/opus/aac/flac/pcm 等 | 口播提示音/示意音频；音色克隆另做 provider capability，不把通用 voice 当克隆 |
 | 余额 | `GET /v1/balance` 查看当前 key；`GET /v1/user/balance` 查看账户 | 设置页成本保护、低余额预警 |
@@ -149,6 +150,19 @@ TikHub 的 Search API、批量高清下载、星图画像和视频生成都不�
 | 错误 | 文档列 400/401/402/403/429/500 等 | 归一化为 invalid/auth/quota/rate_limit/provider/retryable，不把原始响应直接交给 UI |
 
 APIMart 的“OpenAI-compatible”只代表协议接近，不代表模型质量、上下文、工具行为和计费完全等价。Provider adapter 必须保存 `providerKey/modelKey/capabilitySnapshot/requestSummary/usage/cost`，不能在 Domain 中写死某家模型名。
+
+#### 2.2.1 Kling V3 缺失分镜合同快照（2026-08-19）
+
+这部分只记录当前受控实现使用的官方合同，不把其他视频模型的参数类推到 `kling-v3`：
+
+| 阶段 | 当前官方合同 | 本地约束 |
+| --- | --- | --- |
+| 模型发现 | `GET /v1/models?expand=parameters&category=video`；`kling-v3` 当前元数据声明 operation 为 `video_generation`、endpoint 为 `/v1/videos/generations`、参数 schema 版本为 `2026-07-30` | 元数据中的 pricing 当前为空，不能把模型目录当实时账单接口 |
+| 提交 | `POST /v1/videos/generations`；本产品固定发送 `model=kling-v3`、`mode=std`、`duration=5`、`aspect_ratio=9:16` 和单条 prompt | 计费提交 `maxRetries=0`；提交不确定时进入 `submission_unknown`，禁止盲目重发 |
+| 轮询 | `GET /v1/tasks/{task_id}`；官方状态为 `pending`、`processing`、`completed`、`failed`、`cancelled` | 保存 task ID 后才轮询；状态映射到统一 Job，不再发生成请求 |
+| 结果 | 成功视频位于 `data.result.videos[0].url[0]`，同项可带 `expires_at`；任务还可能返回 `progress`、`cost` | 只接受 HTTPS；临时 URL 立即下载、ffprobe 校验、hash 后写入本地 Artifact |
+
+价格必须和接口事实分开：APIMart 官方 2026 视频模型价格对比在 2026-08-19 列出 Kling V3 / Omni 720p 参考价 `$0.0672/秒`，所以本产品的 5 秒分镜显示约 `$0.336`。这是按公开页面计算的**估算快照**，不是模型元数据返回的价格、实时服务端报价或费用上限；确认界面必须显示核对日期，完成后以 Provider 返回的 `cost` 和账户账单为准。若官方文档、模型参数或价格页面变化，先更新快照和合同测试，再允许新的计费提交。
 
 ### 2.3 Vercel AI SDK 7
 

@@ -77,6 +77,59 @@ export interface ProviderPort {
   chat(input: StructuredChatRequest): Promise<ProviderChatResult>;
 }
 
+export const ApiMartVideoGenerationRequestSchema = z.object({
+  modelKey: z.literal("kling-v3").default("kling-v3"),
+  prompt: z.string().trim().min(1).max(2_500),
+  durationSeconds: z.literal(5).default(5),
+  aspectRatio: z.literal("9:16").default("9:16"),
+  quality: z.literal("standard").default("standard"),
+  timeoutMs: z.number().int().positive().max(120_000).default(60_000),
+}).strict();
+export type ApiMartVideoGenerationRequest = z.input<typeof ApiMartVideoGenerationRequestSchema>;
+
+export const MediaSubmissionSchema = z.object({
+  schemaVersion: z.literal(1),
+  providerKey: id,
+  providerTaskId: id,
+  state: z.literal("queued"),
+  providerState: id.optional(),
+  acceptedAt: z.string().datetime({ offset: true }),
+  requestId: id.optional(),
+  responseHash: id,
+}).strict();
+export type MediaSubmission = z.infer<typeof MediaSubmissionSchema>;
+
+export const ProviderMediaOutputSchema = z.object({
+  kind: z.literal("video"),
+  url: z.string().url().refine((value) => new URL(value).protocol === "https:", "生成结果只允许 HTTPS"),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
+}).strict();
+export type ProviderMediaOutput = z.infer<typeof ProviderMediaOutputSchema>;
+
+export const MediaTaskStatusSchema = z.object({
+  schemaVersion: z.literal(1),
+  providerKey: id,
+  providerTaskId: id,
+  state: z.enum(["queued", "processing", "succeeded", "failed", "cancelled"]),
+  providerState: id.optional(),
+  progress: z.number().int().min(0).max(100).optional(),
+  outputs: z.array(ProviderMediaOutputSchema).max(20).optional(),
+  error: ProviderErrorSchema.optional(),
+  estimatedSeconds: z.number().int().nonnegative().optional(),
+  actualSeconds: z.number().int().nonnegative().optional(),
+  cost: z.number().nonnegative().optional(),
+  observedAt: z.string().datetime({ offset: true }),
+  requestId: id.optional(),
+  responseHash: id,
+}).strict();
+export type MediaTaskStatus = z.infer<typeof MediaTaskStatusSchema>;
+
+export interface AsyncMediaProvider {
+  readonly providerKey: string;
+  submitVideo(input: ApiMartVideoGenerationRequest): Promise<MediaSubmission>;
+  pollMediaTask(providerTaskId: string): Promise<MediaTaskStatus>;
+}
+
 export type TikHubPage<T> = {
   providerKey: "tikhub";
   source: "public";
@@ -257,13 +310,26 @@ function bearer(apiKey: string) {
   return { Authorization: `Bearer ${apiKey}` };
 }
 
+function inferredMediaCapabilities(modelKey: string) {
+  const capabilities: ModelDescriptor["capabilities"] = [];
+  const normalized = modelKey.toLowerCase();
+  const videoModel = /(?:^|[-_.])(sora|veo|kling|wan\d|seedance|hailuo|vidu|happyhorse|skyreels)(?:[-_.]|$)|(?:^|[-_.])video(?:[-_.]|$)|omni-flash-ext|ltx-[\d.]+-(?:text-|image-)?video/.test(normalized);
+  const imageModel = /(?:^|[-_.])(gpt-image|imagen|image-generation)(?:[-_.]|$)|grok-imagine-image/.test(normalized);
+  if (videoModel) capabilities.push("video_generation");
+  if (imageModel) capabilities.push("image_generation");
+  return capabilities;
+}
+
 function modelCapabilities(item: Record<string, unknown>) {
   const endpoints = Array.isArray(item.supported_endpoint_types) ? item.supported_endpoint_types.filter((value): value is string => typeof value === "string") : [];
-  const capabilities: ModelDescriptor["capabilities"] = [];
+  const modelKey = typeof item.id === "string" ? item.id : typeof item.name === "string" ? item.name : "";
+  const capabilities: ModelDescriptor["capabilities"] = inferredMediaCapabilities(modelKey);
   if (endpoints.some((value) => /chat|text|completion/i.test(value))) capabilities.push("chat");
   if (endpoints.some((value) => /vision|image_input/i.test(value))) capabilities.push("vision");
+  if (endpoints.some((value) => /image[-_ ]?generation/i.test(value))) capabilities.push("image_generation");
+  if (endpoints.some((value) => /video[-_ ]?generation/i.test(value))) capabilities.push("video_generation");
   if (endpoints.some((value) => /audio|transcription|whisper/i.test(value))) capabilities.push("audio_input", "transcription");
-  return capabilities.length > 0 ? capabilities : ["chat"];
+  return capabilities.length > 0 ? [...new Set(capabilities)] : ["chat"];
 }
 
 function messageText(value: unknown): string {
@@ -272,7 +338,90 @@ function messageText(value: unknown): string {
   return "";
 }
 
-export class ApiMartClient implements ProviderPort {
+function apiMartErrorCategory(code: number | undefined): ProviderErrorCategory {
+  if (code === 401 || code === 403) return "auth";
+  if (code === 402) return "quota";
+  if (code === 429) return "rate_limit";
+  if (code !== undefined && code >= 400 && code < 500) return "invalid";
+  return "provider";
+}
+
+function assertApiMartSuccess(result: { response: Response; body: Record<string, unknown> }) {
+  const rawCode = result.body.code;
+  const code = typeof rawCode === "number" ? rawCode : typeof rawCode === "string" && /^\d+$/.test(rawCode) ? Number(rawCode) : undefined;
+  if ((code === undefined || code === 0 || code === 200) && result.body.success !== false) return;
+  const category = apiMartErrorCategory(code);
+  const bodyError = typeof result.body.error === "object" && result.body.error ? result.body.error as Record<string, unknown> : undefined;
+  throw new ProviderRequestError(ProviderErrorSchema.parse({
+    schemaVersion: 1,
+    providerKey: "apimart",
+    category,
+    code: String(bodyError?.code ?? rawCode ?? "APIMART_BUSINESS_ERROR"),
+    message: String(bodyError?.message ?? result.body.message ?? "APIMart 返回业务错误").slice(0, 500),
+    retryable: category === "rate_limit" || category === "timeout" || category === "network" || (code !== undefined && code >= 500),
+    httpStatus: result.response.status,
+    requestId: responseRequestId(result.body, result.response),
+  }));
+}
+
+function firstApiMartTask(body: Record<string, unknown>) {
+  const value = body.data;
+  if (Array.isArray(value)) return value.find((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : body;
+}
+
+function normalizedMediaState(providerState: string): MediaTaskStatus["state"] | undefined {
+  const state = providerState.toLowerCase().replace(/[ -]+/g, "_");
+  if (["submitted", "pending", "queueing", "queued"].includes(state)) return "queued";
+  if (["processing", "in_progress", "running"].includes(state)) return "processing";
+  if (["completed", "success", "succeeded"].includes(state)) return "succeeded";
+  if (["failed", "error"].includes(state)) return "failed";
+  if (["cancelled", "canceled"].includes(state)) return "cancelled";
+  return undefined;
+}
+
+function isoExpiry(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return new Date(value * 1_000).toISOString();
+  if (typeof value !== "string" || !value) return undefined;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : undefined;
+}
+
+function httpsMediaUrl(value: unknown) {
+  if (typeof value !== "string" || !value) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: "apimart", category: "provider", code: "MEDIA_URL_INVALID", message: "APIMart 返回的视频地址无效", retryable: false }));
+  }
+  if (parsed.protocol !== "https:") throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: "apimart", category: "provider", code: "MEDIA_URL_UNSAFE", message: "APIMart 返回的视频地址不是 HTTPS", retryable: false }));
+  return parsed.toString();
+}
+
+function mediaOutputs(task: Record<string, unknown>) {
+  const result = typeof task.result === "object" && task.result ? task.result as Record<string, unknown> : {};
+  const videos = Array.isArray(result.videos) ? result.videos : [];
+  const outputs: ProviderMediaOutput[] = [];
+  for (const item of videos) {
+    if (typeof item === "string") {
+      const url = httpsMediaUrl(item);
+      if (url) outputs.push(ProviderMediaOutputSchema.parse({ kind: "video", url }));
+      continue;
+    }
+    if (typeof item !== "object" || !item) continue;
+    const record = item as Record<string, unknown>;
+    const candidates = Array.isArray(record.url) ? record.url : [record.url ?? record.video_url];
+    const expiresAt = isoExpiry(record.expires_at ?? record.expiresAt);
+    for (const candidate of candidates) {
+      const url = httpsMediaUrl(candidate);
+      if (url) outputs.push(ProviderMediaOutputSchema.parse({ kind: "video", url, expiresAt }));
+    }
+  }
+  return outputs;
+}
+
+export class ApiMartClient implements ProviderPort, AsyncMediaProvider {
   readonly providerKey = "apimart" as const;
 
   constructor(private readonly options: { apiKey: string; baseUrl?: string; fetcher?: ProviderFetch }) {}
@@ -314,6 +463,75 @@ export class ApiMartClient implements ProviderPort {
     const message = choice && typeof choice.message === "object" && choice.message ? choice.message as Record<string, unknown> : {};
     const payload = ProviderChatResultSchema.parse({ schemaVersion: 1, providerKey: this.providerKey, modelKey: typeof result.body.model === "string" ? result.body.model : input.modelKey, text: messageText(message.content), finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined, requestId: responseRequestId(result.body, result.response), usage: typeof result.body.usage === "object" && result.body.usage ? { inputTokens: Number((result.body.usage as Record<string, unknown>).prompt_tokens) || undefined, outputTokens: Number((result.body.usage as Record<string, unknown>).completion_tokens) || undefined, totalTokens: Number((result.body.usage as Record<string, unknown>).total_tokens) || undefined } : undefined, responseHash: hashResponse(result.body) });
     return payload;
+  }
+
+  async submitVideo(raw: ApiMartVideoGenerationRequest) {
+    const input = ApiMartVideoGenerationRequestSchema.parse(raw);
+    const result = await fetchJson(this.providerKey, this.baseUrl, "/v1/videos/generations", {
+      method: "POST",
+      headers: { ...bearer(this.options.apiKey), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: input.modelKey,
+        prompt: input.prompt,
+        mode: input.quality === "standard" ? "std" : input.quality,
+        duration: input.durationSeconds,
+        aspect_ratio: input.aspectRatio,
+      }),
+    }, input.timeoutMs, this.fetcher);
+    assertApiMartSuccess(result);
+    const task = firstApiMartTask(result.body);
+    const providerTaskId = typeof task?.task_id === "string" ? task.task_id : typeof task?.id === "string" ? task.id : undefined;
+    if (!providerTaskId) throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: this.providerKey, category: "provider", code: "TASK_ID_MISSING", message: "APIMart 没有返回视频任务 ID；为避免重复扣费，不会自动重提", retryable: false, requestId: responseRequestId(result.body, result.response) }));
+    const providerState = typeof task?.status === "string" && task.status ? task.status : undefined;
+    return MediaSubmissionSchema.parse({
+      schemaVersion: 1,
+      providerKey: this.providerKey,
+      providerTaskId,
+      state: "queued",
+      providerState,
+      acceptedAt: new Date().toISOString(),
+      requestId: responseRequestId(result.body, result.response),
+      responseHash: hashResponse(result.body),
+    });
+  }
+
+  async pollMediaTask(rawProviderTaskId: string) {
+    const providerTaskId = z.string().min(1).max(200).regex(/^[A-Za-z0-9._:-]+$/).parse(rawProviderTaskId);
+    const result = await fetchJson(this.providerKey, this.baseUrl, `/v1/tasks/${encodeURIComponent(providerTaskId)}?language=zh`, { headers: bearer(this.options.apiKey) }, 30_000, this.fetcher);
+    assertApiMartSuccess(result);
+    const task = firstApiMartTask(result.body) ?? {};
+    const providerState = typeof task.status === "string" && task.status ? task.status : undefined;
+    if (!providerState) throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: this.providerKey, category: "provider", code: "MEDIA_STATUS_MISSING", message: "APIMart 任务响应缺少状态；任务 ID 已保留，不会自动重提", retryable: false, requestId: responseRequestId(result.body, result.response) }));
+    const state = normalizedMediaState(providerState);
+    if (!state) throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: this.providerKey, category: "provider", code: "MEDIA_STATUS_UNKNOWN", message: `APIMart 返回了未识别的任务状态：${providerState.slice(0, 100)}`, retryable: false, requestId: responseRequestId(result.body, result.response) }));
+    const outputs = mediaOutputs(task);
+    if (state === "succeeded" && outputs.length === 0) throw new ProviderRequestError(ProviderErrorSchema.parse({ schemaVersion: 1, providerKey: this.providerKey, category: "provider", code: "MEDIA_OUTPUT_MISSING", message: "APIMart 显示任务完成，但没有返回可下载的视频地址", retryable: false, requestId: responseRequestId(result.body, result.response) }));
+    const message = typeof task.message === "string" ? task.message : typeof task.error === "string" ? task.error : typeof task.error === "object" && task.error && typeof (task.error as Record<string, unknown>).message === "string" ? (task.error as Record<string, unknown>).message as string : undefined;
+    const error = state === "failed" ? ProviderErrorSchema.parse({
+      schemaVersion: 1,
+      providerKey: this.providerKey,
+      category: "provider",
+      code: "MEDIA_GENERATION_FAILED",
+      message: (message ?? "APIMart 视频生成失败").slice(0, 500),
+      retryable: false,
+      requestId: responseRequestId(result.body, result.response),
+    }) : undefined;
+    return MediaTaskStatusSchema.parse({
+      schemaVersion: 1,
+      providerKey: this.providerKey,
+      providerTaskId,
+      state,
+      providerState,
+      progress: typeof task.progress === "number" ? Math.max(0, Math.min(100, Math.round(task.progress))) : undefined,
+      outputs: outputs.length > 0 ? outputs : undefined,
+      error,
+      estimatedSeconds: typeof task.estimated_time === "number" ? Math.max(0, Math.round(task.estimated_time)) : undefined,
+      actualSeconds: typeof task.actual_time === "number" ? Math.max(0, Math.round(task.actual_time)) : undefined,
+      cost: typeof task.cost === "number" && task.cost >= 0 ? task.cost : undefined,
+      observedAt: new Date().toISOString(),
+      requestId: responseRequestId(result.body, result.response),
+      responseHash: hashResponse(result.body),
+    });
   }
 }
 

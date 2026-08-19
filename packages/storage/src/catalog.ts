@@ -1370,6 +1370,17 @@ export class SqliteCatalog {
     return result.changes === 1;
   }
 
+  checkpointActiveJob(id: string, workerId: string, leaseToken: string, patch: Pick<Partial<JobRecord>, "externalJobId" | "artifactIds" | "checkpoint">, now = new Date()) {
+    if (!workerId || !leaseToken || Number.isNaN(now.getTime())) throw new Error("无效的 active job checkpoint 参数");
+    const current = this.getJob(id);
+    if (!current || !["claimed", "running"].includes(current.state) || current.workerId !== workerId || current.leaseToken !== leaseToken || !current.leaseExpiresAt || current.leaseExpiresAt <= now.toISOString()) return false;
+    const next = JobRecordSchema.parse({ ...current, ...patch, updatedAt: now.toISOString() });
+    const stored = toStoredJob(next);
+    const result = this.db.prepare(`UPDATE jobs SET checkpoint_json = @checkpointJson, external_job_id = @externalJobId, artifact_ids_json = @artifactIdsJson, updated_at = @updatedAt WHERE id = @id AND state = @state AND worker_id = @workerId AND lease_token = @leaseToken AND lease_expires_at > @now`)
+      .run({ ...stored, now: now.toISOString() });
+    return result.changes === 1;
+  }
+
   transitionJob(id: string, from: JobState, to: JobState, leaseToken?: string, patch: Pick<Partial<JobRecord>, "externalJobId" | "artifactIds" | "checkpoint" | "retryAfter" | "lastError"> = {}) {
     assertJobTransition(from, to);
     const current = this.getJob(id);
@@ -1393,7 +1404,7 @@ export class SqliteCatalog {
 
   recoverExpiredLeases(now = new Date()) {
     const timestamp = now.toISOString();
-    const result = this.db.prepare(`UPDATE jobs SET state = CASE WHEN external_job_id IS NULL THEN 'queued' ELSE 'needs_attention' END, worker_id = NULL, lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ? WHERE state IN ('claimed', 'running') AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?`).run(timestamp, timestamp);
+    const result = this.db.prepare(`UPDATE jobs SET state = CASE WHEN external_job_id IS NOT NULL THEN 'needs_attention' WHEN json_extract(checkpoint_json, '$.stage') = 'submitting' THEN 'submission_unknown' ELSE 'queued' END, worker_id = NULL, lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ? WHERE state IN ('claimed', 'running') AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?`).run(timestamp, timestamp);
     return result.changes;
   }
 

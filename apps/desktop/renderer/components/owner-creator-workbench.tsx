@@ -21,16 +21,20 @@ import {
   WandSparkles,
 } from "lucide-react";
 import {
+  adoptGeneratedShot,
+  applyGeneratedShotResults,
   buildStoryboard,
   demoOwnerAssets,
   demoOwnerProfile,
   emptyOwnerProfile,
   generateMissingShots,
+  generationPromptForShot,
   generateScriptVariant,
   getProfileCompletion,
   getStoryboardCoverage,
   inferAssetKind,
   isAssemblyReady,
+  markShotsGenerating,
   narrativeTemplates,
   profileFields,
   recommendTemplate,
@@ -63,11 +67,19 @@ const assetKindLabels: Record<OwnerAsset["kind"], string> = {
 const shotStatusLabels: Record<StoryboardShot["status"], string> = {
   matched: "已用实拍",
   missing: "待生成",
+  generating: "生成中",
+  generated_review: "待预览采用",
   generated: "已生成提案",
+  failed: "生成未完成",
   blocked: "需要真实素材",
 };
 
-export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLegacyProjects: () => void; openEdit: () => void }) {
+export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit, workspaceReady, chooseWorkspace }: {
+  openLegacyProjects: () => void;
+  openEdit: () => void;
+  workspaceReady: boolean;
+  chooseWorkspace: () => Promise<void>;
+}) {
   const [stage, setStage] = useState<StageId>("profile");
   const [profile, setProfile] = useState<OwnerProfile>(emptyOwnerProfile);
   const [profileSource, setProfileSource] = useState<"empty" | "demo" | "user">("empty");
@@ -82,6 +94,10 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
   const [profileError, setProfileError] = useState("");
   const [assemblyStatus, setAssemblyStatus] = useState<"idle" | "assembling" | "ready">("idle");
   const [flowNotice, setFlowNotice] = useState("");
+  const [generationQuote, setGenerationQuote] = useState<GeneratedShotQuote | null>(null);
+  const [generationState, setGenerationState] = useState<"idle" | "quoting" | "generating">("idle");
+  const [generationError, setGenerationError] = useState("");
+  const [generationSafetyHolds, setGenerationSafetyHolds] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const completion = getProfileCompletion(profile);
   const activeVariant = versions[activeVersionIndex] ?? null;
@@ -91,6 +107,19 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
   const chosenTemplateInfo = narrativeTemplates.find((template) => template.id === chosenTemplate)!;
   const chosenFollowupAnswers = chosenTemplateInfo.followup.map((_, index) => followupAnswers[`${chosenTemplate}-${index}`] ?? "");
   const activeStageIndex = stages.findIndex((item) => item.id === stage);
+  const generationCandidates = shots.filter((shot) =>
+    (shot.status === "missing" || shot.status === "failed")
+    && shot.generationAllowed
+    && !generationSafetyHolds[shot.id]);
+  const generationBatchCandidates = generationCandidates.slice(0, 5);
+  const heldGenerationCount = Object.keys(generationSafetyHolds).length;
+
+  function resetGenerationState() {
+    setGenerationQuote(null);
+    setGenerationState("idle");
+    setGenerationError("");
+    setGenerationSafetyHolds({});
+  }
 
   const canOpenStage = (target: StageId) => {
     const targetIndex = stages.findIndex((item) => item.id === target);
@@ -113,6 +142,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     setVersions([]);
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
   }
 
   function updateProfile(key: keyof OwnerProfile, value: string) {
@@ -133,6 +163,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     setVersions([]);
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
     setProfileError("");
     setFlowNotice("已载入“王姐早餐店”演示资料。示例事实和素材仅用于体验这条产品流程。");
   }
@@ -161,18 +192,21 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     setFlowNotice(`已读取 ${nextAssets.length} 个文件的名称与类型；请逐条确认使用权。`);
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
   }
 
   function toggleAssetRights(assetId: string) {
     setAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, rightsConfirmed: !asset.rightsConfirmed } : asset));
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
   }
 
   function removeAsset(assetId: string) {
     setAssets((current) => current.filter((asset) => asset.id !== assetId));
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
   }
 
   function createFirstScript() {
@@ -184,6 +218,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     setActiveVersionIndex(0);
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
     setStage("script");
     setFlowNotice(entryMode === "custom" ? `已把你的意图映射为“${chosenTemplateInfo.label}”结构；你仍可返回改选。` : "已生成第一版。每段都显示使用了哪些资料。" );
   }
@@ -197,6 +232,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     setActiveVersionIndex(versions.length);
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
     setFlowNotice(`已保留旧版，并新增脚本 v${nextVersionNumber}。`);
   }
 
@@ -206,6 +242,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
       : variant));
     setShots([]);
     setAssemblyStatus("idle");
+    resetGenerationState();
   }
 
   function confirmScriptAndMatch() {
@@ -213,16 +250,92 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
     const nextShots = buildStoryboard(activeVariant, assets);
     setShots(nextShots);
     setAssemblyStatus("idle");
+    resetGenerationState();
     setStage("shots");
     setFlowNotice(nextShots.some((shot) => shot.status === "blocked")
       ? "有镜头需要真实素材，系统不会用生成画面伪造本人、客户或真实过程。"
       : "已优先匹配有授权的实拍素材，并把剩余缺口集中列出。" );
   }
 
-  function generateAllMissing() {
-    const next = generateMissingShots(shots);
-    setShots(next);
-    setFlowNotice("已为允许生成的缺口创建本地演示提案；真实接入前必须先确认报价、授权和 Provider。" );
+  async function requestGenerationQuote() {
+    if (generationState !== "idle") return;
+    if (!window.desktop) {
+      setShots(generateMissingShots(shots));
+      setFlowNotice("浏览器演示已创建本地示意提案；安装并从桌面端打开后才会显示真实报价和调用 APIMart。" );
+      return;
+    }
+    if (!workspaceReady) {
+      setGenerationError("真实生成需要一个本地工作区来保存和校验视频。请先选择工作区，再点击生成。" );
+      await chooseWorkspace();
+      return;
+    }
+    const candidates = generationBatchCandidates;
+    if (candidates.length === 0) {
+      setGenerationError(heldGenerationCount > 0
+        ? "这些分镜有尚未核清的 Provider 任务。为避免重复扣费，已暂停重新提交。"
+        : "当前没有可以生成的素材缺口。" );
+      return;
+    }
+    setGenerationState("quoting");
+    setGenerationError("");
+    try {
+      const result = await window.desktop.quoteGeneratedShots({ shots: candidates.map((shot) => ({ shotId: shot.id, prompt: generationPromptForShot(shot), materialKind: shot.materialKind })) });
+      if (!result.ok || !result.quote) throw new Error(result.message ?? "无法取得生成报价");
+      setGenerationQuote(result.quote);
+      setFlowNotice("报价已就绪。请核对模型、数量和预计总价；只有点击“确认并付费生成”才会提交。" );
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "无法取得生成报价");
+    } finally {
+      setGenerationState("idle");
+    }
+  }
+
+  async function confirmGeneratedShots() {
+    if (!window.desktop || !generationQuote || generationState === "generating") return;
+    const quote = generationQuote;
+    const quotedShotIds = new Set(quote.shots.map((shot) => shot.shotId));
+    setGenerationState("generating");
+    setGenerationError("");
+    setShots((current) => {
+      const marked = markShotsGenerating(current);
+      return marked.map((shot, index) => quotedShotIds.has(shot.id) ? shot : current[index]);
+    });
+    try {
+      const result = await window.desktop.runGeneratedShots(quote.id);
+      const generatedResults = result.results ?? [];
+      setShots((current) => applyGeneratedShotResults(current, generatedResults));
+      const safetyHolds = Object.fromEntries(generatedResults
+        .filter((item) => item.status === "submission_unknown" || item.status === "needs_attention")
+        .map((item) => [item.shotId, item.message ?? "Provider 任务需要人工核查，已暂停重复提交。"]));
+      if (Object.keys(safetyHolds).length > 0) setGenerationSafetyHolds((current) => ({ ...current, ...safetyHolds }));
+      if (!result.ok) {
+        const firstFailure = generatedResults.find((item) => !item.ok);
+        setGenerationError(firstFailure?.message ?? result.message ?? `已完成 ${result.completed ?? 0}/${result.total ?? quote.shots.length} 个分镜；未完成项可以重新报价。`);
+      }
+      const actualCostUsd = result.totalActualCostUsd;
+      const costNotice = typeof actualCostUsd === "number" ? ` 本轮 Provider 返回实际费用 $${actualCostUsd.toFixed(3)}。` : "";
+      setFlowNotice(result.ok
+        ? `生成视频已下载并通过本地校验。${costNotice}请逐镜打开预览并明确采用，之后才能进入拼合。`
+        : `本轮生成未全部完成；已成功的视频仍可预览采用，系统不会自动重复提交未知任务。${costNotice}` );
+    } catch (error) {
+      setShots((current) => applyGeneratedShotResults(current, []));
+      setGenerationError(error instanceof Error ? error.message : "生成请求未完成");
+    } finally {
+      setGenerationQuote(null);
+      setGenerationState("idle");
+    }
+  }
+
+  async function openGeneratedShot(shot: StoryboardShot) {
+    if (!window.desktop || !shot.localRelativePath) return;
+    const result = await window.desktop.openWorkspaceFile(shot.localRelativePath);
+    if (!result.ok) setGenerationError(result.message ?? "无法打开生成视频");
+  }
+
+  function adoptGeneratedMaterial(shotId: string) {
+    setShots((current) => adoptGeneratedShot(current, shotId));
+    setAssemblyStatus("idle");
+    setFlowNotice("已采用这份 AI 生成素材；它会在拼合清单中保持 AI 标记。" );
   }
 
   function openAssembly() {
@@ -242,7 +355,7 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
       <header className="owner-studio-header">
         <div>
           <h1>从你的资料和实拍开始，做完一条视频。</h1>
-          <p>先确认“你是谁、做什么生意”，再生成脚本、匹配素材、补齐分镜。当前页面是本地交互原型，不调用付费生成服务。</p>
+          <p>先确认“你是谁、做什么生意”，再生成脚本、匹配素材、补齐分镜。桌面端只有在你看过预计费用并明确确认后，才会调用付费生成服务。</p>
         </div>
         <div className="owner-studio-trust"><ShieldCheck size={18} /><div><strong>本地优先</strong><span>资料变化会让下游结果过期，不会静默覆盖。</span></div></div>
       </header>
@@ -284,16 +397,64 @@ export function OwnerCreatorWorkbench({ openLegacyProjects, openEdit }: { openLe
 
       {stage === "shots" && <section className="owner-stage-panel shots-stage">
         <div className="owner-stage-heading"><div><h2>每个分镜，都有明确的素材去向</h2><p>先用已授权实拍；缺口再生成。本人、客户和真实过程不会被合成画面冒充。</p></div><button className="owner-back" onClick={() => setStage("script")}><ArrowLeft size={16} /> 返回脚本</button></div>
-        <div className="coverage-summary"><div><strong>{coverage.ready}/{coverage.total}</strong><span>镜头已经就绪</span></div><div className="coverage-track"><span style={{ width: `${coverage.total ? coverage.ready / coverage.total * 100 : 0}%` }} /></div><div className="coverage-counts"><span><i className="matched" />已用实拍 {shots.filter((shot) => shot.status === "matched").length}</span><span><i className="missing" />待生成 {coverage.missing}</span><span><i className="blocked" />需真实素材 {coverage.blocked}</span></div></div>
-        <div className="shot-coverage-list">{shots.map((shot) => <article key={shot.id} className={`shot-row status-${shot.status}`}><div className="shot-preview"><Play size={18} /><span>{String(shot.order + 1).padStart(2, "0")}</span></div><div className="shot-copy"><div><strong>{shot.purpose}</strong><span>{shot.targetSeconds} 秒 · {shot.materialKind}</span></div><p>{shot.line}</p><small>{shot.matchReason}</small></div><div className="shot-material"><span className={`shot-status ${shot.status}`}>{shotStatusLabels[shot.status]}</span><strong>{shot.assetLabel ?? "暂无素材"}</strong>{shot.status === "missing" ? <button onClick={generateAllMissing}>生成全部缺口</button> : shot.status === "generated" ? <span className="shot-material-note">可以进入拼合</span> : <button onClick={() => setStage("profile")}>{shot.status === "matched" ? "回资料页更换" : "回资料页上传"}</button>}</div></article>)}</div>
-        {coverage.missing > 0 && <section className="generation-batch"><div><WandSparkles size={20} /><div><strong>发现 {coverage.missing} 个允许生成的缺口</strong><p>本轮只生成缺失镜头；真实接入时会先显示逐镜报价、预计耗时和授权。</p></div></div><button className="owner-generate" onClick={generateAllMissing}><Sparkles size={16} /> 一键生成 {coverage.missing} 个缺失分镜</button></section>}
+        <div className="coverage-summary">
+          <div><strong>{coverage.ready}/{coverage.total}</strong><span>镜头已经就绪</span></div>
+          <div className="coverage-track"><span style={{ width: `${coverage.total ? coverage.ready / coverage.total * 100 : 0}%` }} /></div>
+          <div className="coverage-counts">
+            <span><i className="matched" />已用实拍 {shots.filter((shot) => shot.status === "matched").length}</span>
+            <span><i className="missing" />待生成/重试 {coverage.missing}</span>
+            <span><i className="generating" />生成中 {coverage.generating}</span>
+            <span><i className="review" />待预览采用 {coverage.review}</span>
+            <span><i className="blocked" />需真实素材 {coverage.blocked}</span>
+          </div>
+        </div>
+        <div className="shot-coverage-list">{shots.map((shot) => {
+          const safetyHold = generationSafetyHolds[shot.id];
+          return <article key={shot.id} className={`shot-row status-${shot.status}`}>
+            <div className="shot-preview"><Play size={18} /><span>{String(shot.order + 1).padStart(2, "0")}</span></div>
+            <div className="shot-copy"><div><strong>{shot.purpose}</strong><span>{shot.targetSeconds} 秒 · {shot.materialKind}</span></div><p>{shot.line}</p><small>{shot.matchReason}</small></div>
+            <div className="shot-material">
+              <span className={`shot-status ${shot.status}`}>{shotStatusLabels[shot.status]}</span>
+              <strong>{shot.assetLabel ?? "暂无素材"}</strong>
+              {(shot.status === "missing" || shot.status === "failed") && !safetyHold
+                ? <button onClick={() => void requestGenerationQuote()}>给全部缺口看报价</button>
+                : shot.status === "generating"
+                  ? <span className="shot-material-note"><RefreshCw className="spin" size={12} /> 正在生成并回收到本地</span>
+                  : shot.status === "generated_review"
+                    ? <div className="shot-review-actions">
+                      <button disabled={!shot.localRelativePath} onClick={() => void openGeneratedShot(shot)}>{shot.localRelativePath ? "打开视频预览" : "演示素材无本地文件"}</button>
+                      <button className="adopt" onClick={() => adoptGeneratedMaterial(shot.id)}>采用这份素材</button>
+                    </div>
+                    : shot.status === "generated"
+                      ? <span className="shot-material-note"><CircleCheck size={12} /> 已采用，可以进入拼合</span>
+                      : safetyHold
+                        ? <span className="shot-material-note attention">已暂停重试，先核查 Provider 任务</span>
+                        : <button onClick={() => setStage("profile")}>{shot.status === "matched" ? "回资料页更换" : "回资料页上传"}</button>}
+            </div>
+          </article>;
+        })}</div>
+        {generationError && <div className="owner-inline-error" role="alert"><CircleAlert size={16} />{generationError}</div>}
+        {generationState === "generating" && <section className="generation-batch generation-running" aria-live="polite"><div><RefreshCw className="spin" size={20} /><div><strong>正在生成 {generationQuote?.shots.length ?? generationCandidates.length} 个分镜</strong><p>正在等待 Provider 完成、下载视频并做本地校验。请保持应用打开；不会因刷新状态而重复提交。</p></div></div></section>}
+        {coverage.missing > 0 && generationState !== "generating" && !generationQuote && generationCandidates.length > 0 && <section className="generation-batch"><div><WandSparkles size={20} /><div><strong>发现 {generationCandidates.length} 个允许生成的缺口</strong><p>先取得本轮预计费用；看报价不会提交任务，也不会扣费。{generationCandidates.length > 5 ? "为控制费用，本轮先处理前 5 个，其余下一轮再确认。" : ""}</p></div></div><button className="owner-generate" onClick={() => void requestGenerationQuote()} disabled={generationState === "quoting"}>{generationState === "quoting" ? <><RefreshCw className="spin" size={16} /> 正在获取报价…</> : <><Sparkles size={16} /> 先看报价</>}</button></section>}
+        {generationQuote && generationState !== "generating" && <section className="generation-quote" aria-label="AI 分镜生成报价">
+          <div className="generation-quote-heading"><div><span>付费前确认</span><h3>{generationQuote.modelLabel}</h3><p>{generationQuote.shots.length} 个分镜 · 每个 {generationQuote.durationSeconds} 秒 · 竖屏 {generationQuote.aspectRatio}</p></div><ShieldCheck size={22} /></div>
+          <dl className="generation-quote-grid">
+            <div><dt>预计每镜</dt><dd>${generationQuote.estimatedCostPerShotUsd.toFixed(3)}</dd></div>
+            <div><dt>预计总费用</dt><dd>${generationQuote.estimatedTotalCostUsd.toFixed(3)} USD</dd></div>
+            <div><dt>价格核对日期</dt><dd>{generationQuote.priceCheckedAt}</dd></div>
+          </dl>
+          <p className="generation-quote-note">这是按公开单价计算的预计费用，实际扣费以 Provider 返回结果为准。点击下面的深色按钮后才会逐镜提交付费任务。</p>
+          <div className="generation-quote-actions"><button className="text-button" onClick={() => void window.desktop?.openExternal(generationQuote.priceSourceUrl)}>查看价格来源</button><button className="secondary-button" onClick={() => setGenerationQuote(null)}>取消</button><button className="owner-generate generation-confirm" onClick={() => void confirmGeneratedShots()}>确认并付费生成（预计 ${generationQuote.estimatedTotalCostUsd.toFixed(3)}）</button></div>
+        </section>}
+        {coverage.review > 0 && <div className="generation-review-notice"><Play size={17} /><div><strong>有 {coverage.review} 个视频等待你决定</strong><p>逐个打开本地视频预览；只有点击“采用这份素材”，这个镜头才会进入拼合清单。</p></div></div>}
+        {heldGenerationCount > 0 && <div className="owner-inline-error generation-hold" role="alert"><ShieldCheck size={16} />有 {heldGenerationCount} 个 Provider 任务状态尚未核清。为避免重复扣费，已暂停这些分镜的再次生成。</div>}
         {coverage.blocked > 0 && <div className="owner-inline-error" role="alert"><CircleAlert size={16} />还有 {coverage.blocked} 个镜头需要本人、客户授权或真实过程素材，不能用 AI 伪造。请返回资料上传或更换脚本结构。</div>}
-        <div className="owner-stage-actions"><button className="owner-back" onClick={() => setStage("script")}><ArrowLeft size={16} /> 上一步</button><button className="owner-primary" disabled={!isAssemblyReady(shots)} onClick={openAssembly}>{isAssemblyReady(shots) ? "镜头已齐，进入拼合" : "镜头未齐，暂不能拼合"} <ArrowRight size={17} /></button></div>
+        <div className="owner-stage-actions"><button className="owner-back" onClick={() => setStage("script")}><ArrowLeft size={16} /> 上一步</button><button className="owner-primary" disabled={!isAssemblyReady(shots)} onClick={openAssembly}>{isAssemblyReady(shots) ? "镜头已采用，进入拼合" : coverage.review > 0 ? `还有 ${coverage.review} 个生成视频待采用` : "镜头未齐，暂不能拼合"} <ArrowRight size={17} /></button></div>
       </section>}
 
       {stage === "assembly" && <section className="owner-stage-panel assembly-stage">
         <div className="owner-stage-heading"><div><h2>所有镜头已经排好，确认后创建拼合提案</h2><p>拼合使用当前冻结的脚本和素材顺序，不会在执行中重新选择或改写。</p></div><button className="owner-back" onClick={() => setStage("shots")}><ArrowLeft size={16} /> 返回替换镜头</button></div>
-        <div className="assembly-board"><div className="assembly-player"><div className="assembly-player-screen"><div className="assembly-play"><Play size={26} fill="currentColor" /></div><span>{assemblyStatus === "ready" ? "拼合提案 v1 已就绪" : assemblyStatus === "assembling" ? "正在按冻结清单创建提案…" : "等待确认拼合"}</span></div><div className="assembly-timeline">{shots.map((shot, index) => <div key={shot.id} className={shot.status === "generated" ? "generated" : "real"} style={{ flex: Math.max(1, shot.targetSeconds) }}><span>{String(index + 1).padStart(2, "0")}</span><small>{shot.status === "generated" ? "AI" : "实拍"}</small></div>)}</div></div><aside className="assembly-manifest"><h3>冻结清单</h3><dl><div><dt>脚本</dt><dd>v{activeVariant?.version ?? 1} · {activeVariant?.beats.length ?? 0} 段</dd></div><div><dt>镜头</dt><dd>{shots.length} 个 · {assemblyStats.duration} 秒</dd></div><div><dt>实拍</dt><dd>{assemblyStats.real} 个</dd></div><div><dt>生成提案</dt><dd>{assemblyStats.generated} 个</dd></div><div><dt>空镜头</dt><dd>0 个</dd></div></dl><div className="assembly-safety"><ShieldCheck size={16} /><span>当前清单只使用标记为“本项目可用”的实拍；正式导出前仍需复核授权。</span></div><button className="owner-assemble" onClick={assemblePreview} disabled={assemblyStatus === "assembling"}>{assemblyStatus === "assembling" ? <><RefreshCw className="spin" size={17} /> 正在拼合…</> : assemblyStatus === "ready" ? <><CircleCheck size={17} /> 重新创建拼合提案</> : <><Clapperboard size={17} /> 一键拼合</>}</button><p>交互原型不会输出 MP4，也不会调用云端。真实实现将复用冻结规格和本地渲染链路。</p></aside></div>
+        <div className="assembly-board"><div className="assembly-player"><div className="assembly-player-screen"><div className="assembly-play"><Play size={26} fill="currentColor" /></div><span>{assemblyStatus === "ready" ? "拼合提案 v1 已就绪" : assemblyStatus === "assembling" ? "正在按冻结清单创建提案…" : "等待确认拼合"}</span></div><div className="assembly-timeline">{shots.map((shot, index) => <div key={shot.id} className={shot.status === "generated" ? "generated" : "real"} style={{ flex: Math.max(1, shot.targetSeconds) }}><span>{String(index + 1).padStart(2, "0")}</span><small>{shot.status === "generated" ? "AI" : "实拍"}</small></div>)}</div></div><aside className="assembly-manifest"><h3>冻结清单</h3><dl><div><dt>脚本</dt><dd>v{activeVariant?.version ?? 1} · {activeVariant?.beats.length ?? 0} 段</dd></div><div><dt>镜头</dt><dd>{shots.length} 个 · {assemblyStats.duration} 秒</dd></div><div><dt>实拍</dt><dd>{assemblyStats.real} 个</dd></div><div><dt>生成提案</dt><dd>{assemblyStats.generated} 个</dd></div><div><dt>空镜头</dt><dd>0 个</dd></div></dl><div className="assembly-safety"><ShieldCheck size={16} /><span>当前清单只使用标记为“本项目可用”的实拍和你已经预览采用的 AI 视频；正式导出前仍需复核授权。</span></div><button className="owner-assemble" onClick={assemblePreview} disabled={assemblyStatus === "assembling"}>{assemblyStatus === "assembling" ? <><RefreshCw className="spin" size={17} /> 正在拼合…</> : assemblyStatus === "ready" ? <><CircleCheck size={17} /> 重新创建拼合提案</> : <><Clapperboard size={17} /> 一键拼合</>}</button><p>当前阶段会创建拼合交互提案，暂不输出最终 MP4；前一步已确认生成的视频会从本地冻结清单读取。</p></aside></div>
         {assemblyStatus === "ready" && <section className="assembly-success" aria-live="polite"><CircleCheck size={23} /><div><strong>拼合提案 v1 已就绪</strong><p>你可以返回替换任一镜头后重新拼合，或进入现有 AI 剪辑工作台继续查看真实渲染链路。</p></div><button className="secondary-button" onClick={openEdit}>进入 AI 剪辑 <ArrowRight size={16} /></button></section>}
         <div className="owner-stage-actions"><button className="owner-back" onClick={() => setStage("shots")}><ArrowLeft size={16} /> 上一步</button><button className="text-button" onClick={openLegacyProjects}>查看旧创作项目</button></div>
       </section>}

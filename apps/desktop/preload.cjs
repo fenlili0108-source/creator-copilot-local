@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktop", {
   getInfo: () => ipcRenderer.invoke("desktop:get-info"),
+  quoteGeneratedShots: (input) => ipcRenderer.invoke("desktop:quote-generated-shots", input),
+  runGeneratedShots: (quoteId) => ipcRenderer.invoke("desktop:run-generated-shots", quoteId),
   chooseWorkspace: () => ipcRenderer.invoke("desktop:choose-workspace"),
   listProjects: () => ipcRenderer.invoke("desktop:list-projects"),
   loadProject: (input) => ipcRenderer.invoke("desktop:load-project", input),

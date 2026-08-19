@@ -41,7 +41,7 @@ def run_owner_flow(page) -> None:
     page.get_by_role("tab", name=re.compile("v2")).wait_for()
     page.get_by_role("button", name=re.compile("确认脚本，自动匹配素材")).click()
     page.get_by_text("4/5", exact=True).wait_for()
-    page.get_by_role("button", name=re.compile("一键生成 1 个缺失分镜")).click()
+    page.get_by_role("button", name="先看报价", exact=True).click()
     page.get_by_text("5/5", exact=True).wait_for()
     page.get_by_role("button", name=re.compile("镜头已齐，进入拼合")).click()
     page.get_by_text(re.compile("正式导出前仍需复核授权")).wait_for()

@@ -26,6 +26,63 @@ describe("provider adapters", () => {
     await expect(client.chat({ modelKey: "model-a", messages: [{ role: "user", content: "hello" }] })).rejects.toSatisfy((error: unknown) => error instanceof ProviderRequestError && error.normalized.category === "auth" && error.normalized.retryable === false);
   });
 
+  it("submits and polls one bounded APIMart video task without exposing the key", async () => {
+    const calls: Array<{ url: string; method?: string; body?: string }> = [];
+    const client = new ApiMartClient({ apiKey: "secret-test-key", baseUrl: "https://api.example.test", fetcher: async (input, init) => {
+      calls.push({ url: String(input), method: init?.method, body: typeof init?.body === "string" ? init.body : undefined });
+      if (String(input).includes("/v1/videos/generations")) return jsonResponse({ code: 200, data: [{ status: "submitted", task_id: "task_video_1" }] });
+      return jsonResponse({ code: 200, data: { id: "task_video_1", status: "completed", progress: 100, cost: 0.336, result: { videos: [{ url: ["https://cdn.example/generated.mp4"], expires_at: 1_800_000_000 }] }, actual_time: 42 } });
+    } });
+    const submission = await client.submitVideo({ prompt: "清晨门店外景，镜头缓慢推进" });
+    expect(submission).toMatchObject({ providerKey: "apimart", providerTaskId: "task_video_1", state: "queued", providerState: "submitted" });
+    await expect(client.pollMediaTask("task_video_1")).resolves.toMatchObject({ state: "succeeded", progress: 100, cost: 0.336, outputs: [{ kind: "video", url: "https://cdn.example/generated.mp4", expiresAt: "2027-01-15T08:00:00.000Z" }] });
+    expect(JSON.parse(calls[0].body ?? "{}")).toEqual({ model: "kling-v3", prompt: "清晨门店外景，镜头缓慢推进", mode: "std", duration: 5, aspect_ratio: "9:16" });
+    expect(calls[1].url).toBe("https://api.example.test/v1/tasks/task_video_1?language=zh");
+    expect(calls.filter((call) => call.method === "POST" && call.url === "https://api.example.test/v1/videos/generations")).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify({ calls, submission })).not.toContain("secret-test-key");
+  });
+
+  it("normalizes APIMart media states and does not retry failed tasks", async () => {
+    const states = new Map([
+      ["submitted", "queued"],
+      ["queueing", "queued"],
+      ["in_progress", "processing"],
+      ["success", "succeeded"],
+      ["failed", "failed"],
+      ["cancelled", "cancelled"],
+    ] as const);
+    let calls = 0;
+    for (const [providerState, expected] of states) {
+      const client = new ApiMartClient({ apiKey: "secret-test-key", baseUrl: "https://api.example.test", fetcher: async () => {
+        calls += 1;
+        return jsonResponse({ code: 200, data: {
+          id: `task_${providerState}`,
+          status: providerState,
+          message: providerState === "failed" ? "provider rejected" : undefined,
+          ...(providerState === "success" ? { result: { videos: [{ url: ["https://cdn.example/success.mp4"] }] } } : {}),
+        } });
+      } });
+      await expect(client.pollMediaTask(`task_${providerState}`)).resolves.toMatchObject({ state: expected, ...(expected === "failed" ? { error: { code: "MEDIA_GENERATION_FAILED", retryable: false } } : {}) });
+    }
+    expect(calls).toBe(states.size);
+  });
+
+  it("rejects APIMart HTTP-200 business errors and unsafe media URLs", async () => {
+    const businessError = new ApiMartClient({ apiKey: "secret-test-key", baseUrl: "https://api.example.test", fetcher: async () => jsonResponse({ code: 402, message: "insufficient balance" }) });
+    await expect(businessError.submitVideo({ prompt: "fixture" })).rejects.toSatisfy((error: unknown) => error instanceof ProviderRequestError && error.normalized.category === "quota" && error.normalized.retryable === false);
+    const unsafe = new ApiMartClient({ apiKey: "secret-test-key", baseUrl: "https://api.example.test", fetcher: async () => jsonResponse({ code: 200, data: { id: "task_unsafe", status: "completed", result: { videos: [{ url: "http://cdn.example/generated.mp4" }] } } }) });
+    await expect(unsafe.pollMediaTask("task_unsafe")).rejects.toSatisfy((error: unknown) => error instanceof ProviderRequestError && error.normalized.code === "MEDIA_URL_UNSAFE");
+  });
+
+  it("infers video capability for APIMart catalog entries whose endpoint is only labeled openai", async () => {
+    const client = new ApiMartClient({ apiKey: "secret-test-key", baseUrl: "https://api.example.test", fetcher: async () => jsonResponse({ data: [{ id: "kling-v3", supported_endpoint_types: ["openai"] }, { id: "gpt-5-nano", supported_endpoint_types: ["openai"] }] }) });
+    await expect(client.listModels()).resolves.toEqual([
+      expect.objectContaining({ modelKey: "kling-v3", capabilities: ["video_generation"] }),
+      expect.objectContaining({ modelKey: "gpt-5-nano", capabilities: ["chat"] }),
+    ]);
+  });
+
   it("uses AI SDK structured output with one non-retried OpenAI-compatible request", async () => {
     const calls: Array<{ url: string; body?: string }> = [];
     const fetcher: typeof fetch = async (input, init) => {

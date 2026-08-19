@@ -1,10 +1,11 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, shell, utilityProcess } = require("electron");
 const { createHash, randomUUID } = require("node:crypto");
 const { existsSync, mkdirSync, mkdtempSync, realpathSync } = require("node:fs");
 const { mkdir: makeDirectory, readFile, rename, rm: removeFile, stat: statFile, writeFile } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { createShotGenerationService } = require("./shot-generation-service.cjs");
 
 const isDevelopment = !app.isPackaged && !process.argv.includes("--load-dist");
 let selectedWorkspacePath = null;
@@ -15,6 +16,14 @@ const pendingTopicRadarQuotes = new Map();
 const pendingAccountMetricsQuotes = new Map();
 const pendingAccountAnalysisQuotes = new Map();
 const activeAnalysisWorkers = new Map();
+const shotGenerationService = createShotGenerationService({
+  getRuntime: getDesktopRuntime,
+  requireWorkspace,
+  getApiKey: () => process.env.APIMART_API_KEY,
+  getProviderKey: () => process.env.MEDIA_GENERATION_PROVIDER ?? "apimart",
+  getBaseUrl: () => process.env.APIMART_BASE_URL ?? "https://api.apimart.ai",
+  fetcher: (input, init) => net.fetch(String(input), init),
+});
 
 function localAnalysisSettingsPath() {
   return path.join(app.getPath("userData"), "local-analysis-settings.json");
@@ -216,6 +225,7 @@ async function initializeWorkspace(workspacePath) {
   pendingTopicRadarQuotes.clear();
   pendingAccountMetricsQuotes.clear();
   pendingAccountAnalysisQuotes.clear();
+  shotGenerationService.clearQuotes();
   return canonicalWorkspacePath;
 }
 
@@ -687,7 +697,12 @@ ipcMain.handle("desktop:get-info", () => ({
   platform: process.platform,
   arch: process.arch,
   workspacePath: selectedWorkspacePath,
+  mediaGeneration: shotGenerationService.configuration(),
 }));
+
+ipcMain.handle("desktop:quote-generated-shots", (_event, raw) => shotGenerationService.quoteGeneratedShots(raw));
+
+ipcMain.handle("desktop:run-generated-shots", (_event, quoteId) => shotGenerationService.runGeneratedShots(quoteId));
 
 ipcMain.handle("desktop:get-local-analysis-settings", async () => {
   try {
@@ -2011,15 +2026,15 @@ app.whenReady().then(() => {
   if (process.argv.includes("--smoke")) {
     window.webContents.once("did-finish-load", async () => {
       try {
-        const result = await window.webContents.executeJavaScript("window.desktop?.getInfo ? window.desktop.getInfo() : null");
-        if (!result || typeof result.platform !== "string" || typeof result.arch !== "string") throw new Error("preload IPC smoke 返回值无效");
+        const result = await window.webContents.executeJavaScript("window.desktop?.getInfo ? window.desktop.getInfo().then((info) => ({ info, hasQuoteGeneratedShots: typeof window.desktop.quoteGeneratedShots === 'function', hasRunGeneratedShots: typeof window.desktop.runGeneratedShots === 'function' })) : null");
+        if (!result?.info || typeof result.info.platform !== "string" || typeof result.info.arch !== "string" || !result.hasQuoteGeneratedShots || !result.hasRunGeneratedShots) throw new Error("preload IPC smoke 返回值或生成分镜 allowlist 无效");
         const runtime = await getDesktopRuntime();
         const smokeRoot = mkdtempSync(path.join(os.tmpdir(), "creator-copilot-desktop-smoke-"));
         const smokeCatalog = new runtime.storage.SqliteCatalog(path.join(smokeRoot, "catalog.sqlite"));
         const schemaVersion = smokeCatalog.schemaVersion();
         smokeCatalog.close();
         await removeFile(smokeRoot, { recursive: true, force: true });
-        console.log(JSON.stringify({ ok: true, smoke: "preload-ipc+runtime-sqlite", platform: result.platform, arch: result.arch, schemaVersion }));
+        console.log(JSON.stringify({ ok: true, smoke: "preload-ipc+runtime-sqlite", platform: result.info.platform, arch: result.info.arch, schemaVersion, generatedShotIpc: true }));
         app.exit(0);
       } catch (error) {
         console.error(JSON.stringify({ ok: false, smoke: "preload-ipc", message: error instanceof Error ? error.message : "preload IPC smoke 失败" }));

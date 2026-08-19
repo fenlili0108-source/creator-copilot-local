@@ -154,7 +154,12 @@ export function App() {
 
         <div className="page-content">
           {activeView === "studio" ? (
-            <OwnerCreatorWorkbench openLegacyProjects={() => setActiveView("projects")} openEdit={() => setActiveView("edit")} />
+            <OwnerCreatorWorkbench
+              openLegacyProjects={() => setActiveView("projects")}
+              openEdit={() => setActiveView("edit")}
+              workspaceReady={Boolean(workspacePath)}
+              chooseWorkspace={chooseWorkspace}
+            />
           ) : activeView === "today" ? (
             <>
               <section className="hero-row"><div><div className="eyebrow">THURSDAY · AUG 14</div><h1>今天，先把一个观点讲清楚。</h1><p className="hero-copy">从研究、脚本到分镜和素材，原点把下一步放在你面前。</p></div><div className="hero-actions"><button className="secondary-button" onClick={importMedia} disabled={mediaImporting}><Upload size={16} /> {mediaImporting ? "处理中…" : "导入素材"}</button><button className="primary-button"><Plus size={17} /> 新建创作项目</button></div></section>

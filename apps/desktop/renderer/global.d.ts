@@ -3,6 +3,45 @@ interface DesktopInfo {
   platform: string;
   arch: string;
   workspacePath?: string | null;
+  mediaGeneration?: { configured: boolean; providerKey: string; modelKey: string };
+}
+
+interface GeneratedShotQuote {
+  id: string;
+  workspaceId: string;
+  shots: Array<{ shotId: string; materialKind: string }>;
+  providerKey: "apimart";
+  modelKey: "kling-v3";
+  modelLabel: string;
+  durationSeconds: 5;
+  aspectRatio: "9:16";
+  unitPriceUsd: number;
+  estimatedCostPerShotUsd: number;
+  estimatedTotalCostUsd: number;
+  currency: "USD";
+  priceCheckedAt: string;
+  priceSourceUrl: string;
+  quotedAt: string;
+  expiresAt: string;
+}
+
+interface GeneratedShotQuoteResult {
+  ok: boolean;
+  errorCode?: string;
+  message?: string;
+  quote?: GeneratedShotQuote;
+}
+
+interface GeneratedShotRunResult {
+  ok: boolean;
+  partial?: boolean;
+  errorCode?: string;
+  message?: string;
+  quote?: GeneratedShotQuote;
+  completed?: number;
+  total?: number;
+  totalActualCostUsd?: number;
+  results?: Array<{ shotId: string; ok: boolean; status: "succeeded" | "failed" | "cancelled" | "needs_attention" | "submission_unknown"; errorCode?: string; message?: string; providerTaskId?: string; artifactId?: string; relativePath?: string; durationMs?: number; byteSize?: number; contentHash?: string; actualCostUsd?: number }>;
 }
 
 interface ChooseWorkspaceResult {
@@ -535,6 +574,8 @@ interface ReviewMemoryResult { ok: boolean; errorCode?: string; message?: string
 interface Window {
   desktop?: {
     getInfo: () => Promise<DesktopInfo>;
+    quoteGeneratedShots: (input: { shots: Array<{ shotId: string; prompt: string; materialKind: string }> }) => Promise<GeneratedShotQuoteResult>;
+    runGeneratedShots: (quoteId: string) => Promise<GeneratedShotRunResult>;
     chooseWorkspace: () => Promise<ChooseWorkspaceResult>;
     listProjects: () => Promise<ListProjectsResult>;
     loadProject: (input: { projectId: string }) => Promise<LoadProjectResult>;

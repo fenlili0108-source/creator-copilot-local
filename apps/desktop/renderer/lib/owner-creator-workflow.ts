@@ -68,7 +68,7 @@ export type ScriptVariant = {
   beats: ScriptBeat[];
 };
 
-export type ShotMaterialStatus = "matched" | "missing" | "generated" | "blocked";
+export type ShotMaterialStatus = "matched" | "missing" | "generating" | "generated_review" | "generated" | "failed" | "blocked";
 
 export type StoryboardShot = {
   id: string;
@@ -81,6 +81,9 @@ export type StoryboardShot = {
   status: ShotMaterialStatus;
   assetId?: string;
   assetLabel?: string;
+  providerTaskId?: string;
+  artifactId?: string;
+  localRelativePath?: string;
   matchReason: string;
   generationAllowed: boolean;
   required: boolean;
@@ -288,11 +291,53 @@ export function generateMissingShots(shots: StoryboardShot[]) {
   } : shot);
 }
 
+export function generationPromptForShot(shot: StoryboardShot) {
+  if (!shot.generationAllowed || !["store", "product", "graphic", "generic"].includes(shot.materialKind)) throw new Error("这个分镜必须使用真实素材，不能生成替代");
+  return [
+    "竖屏 9:16 的真实质感短视频 B-roll；不要出现可识别人物正脸、顾客、品牌标识、水印或可读文字。",
+    `镜头目的：${shot.purpose}。`,
+    `内容语境：${shot.line}`,
+    shot.materialKind === "graphic" ? "使用简洁抽象动态图形和留白，文字由本地剪辑阶段叠加。" : `主体类型：${shot.materialKind}；自然光、真实经营场景、稳定运镜。`,
+  ].join(" ");
+}
+
+export function markShotsGenerating(shots: StoryboardShot[]) {
+  return shots.map((shot) => (shot.status === "missing" || shot.status === "failed") && shot.generationAllowed ? { ...shot, status: "generating" as const, matchReason: "已确认报价，正在等待 Provider 生成并回收到本地。" } : shot);
+}
+
+export function applyGeneratedShotResults(shots: StoryboardShot[], results: NonNullable<GeneratedShotRunResult["results"]>) {
+  const byShotId = new Map(results.map((result) => [result.shotId, result]));
+  return shots.map((shot) => {
+    const result = byShotId.get(shot.id);
+    if (!result) return shot.status === "generating" ? { ...shot, status: "missing" as const, matchReason: "本轮在提交这一镜前已停止，可以重新报价。" } : shot;
+    if (!result.ok || !result.artifactId || !result.relativePath) return { ...shot, status: "failed" as const, matchReason: result.message ?? "生成失败，可以重新报价；不会自动重复提交。" };
+    return {
+      ...shot,
+      status: "generated_review" as const,
+      assetId: result.artifactId,
+      assetLabel: `AI 生成待审 · ${shot.purpose}`,
+      providerTaskId: result.providerTaskId,
+      artifactId: result.artifactId,
+      localRelativePath: result.relativePath,
+      targetSeconds: result.durationMs ? Math.max(1, Math.round(result.durationMs / 1_000)) : shot.targetSeconds,
+      matchReason: "Provider 结果已下载并通过本地视频校验；请先预览，再明确采用。",
+    };
+  });
+}
+
+export function adoptGeneratedShot(shots: StoryboardShot[], shotId: string) {
+  return shots.map((shot) => shot.id === shotId && shot.status === "generated_review" && shot.artifactId
+    ? { ...shot, status: "generated" as const, assetLabel: `AI 生成已采用 · ${shot.purpose}`, matchReason: "你已预览并采用这份本地 AI 生成素材。" }
+    : shot);
+}
+
 export function getStoryboardCoverage(shots: StoryboardShot[]) {
   const ready = shots.filter((shot) => shot.status === "matched" || shot.status === "generated").length;
-  const missing = shots.filter((shot) => shot.status === "missing").length;
+  const missing = shots.filter((shot) => shot.status === "missing" || shot.status === "failed").length;
+  const generating = shots.filter((shot) => shot.status === "generating").length;
+  const review = shots.filter((shot) => shot.status === "generated_review").length;
   const blocked = shots.filter((shot) => shot.status === "blocked").length;
-  return { ready, missing, blocked, total: shots.length, complete: shots.length > 0 && ready === shots.length };
+  return { ready, missing, generating, review, blocked, total: shots.length, complete: shots.length > 0 && ready === shots.length };
 }
 
 export function isAssemblyReady(shots: StoryboardShot[]) {
